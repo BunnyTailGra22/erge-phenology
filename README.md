@@ -8,6 +8,8 @@ An interactive visualization of plant phenology along the "Way of Fire" ridge tr
 
 [English](#english) ｜ [繁體中文](#繁體中文)
 
+![Dashboard preview / 儀表板預覽](preview.png)
+
 ---
 
 ## Architecture / 專案架構

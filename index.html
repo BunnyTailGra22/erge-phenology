@@ -57,6 +57,15 @@ text{font-family:inherit}
 .badge.warn{background:#faecd2;color:#7a5600}
 footer{padding:14px 24px;color:var(--muted);font-size:12px;border-top:1px solid var(--line)}
 a{color:var(--accent)}
+@media (max-width:720px){
+  header{padding:16px 16px 10px}
+  header h1{font-size:21px}
+  .wrap{flex-direction:column;gap:14px;padding:14px 16px}
+  #controls{width:100%;position:static;top:auto}
+  main{min-width:0}
+  footer{padding:14px 16px}
+  .card .scroll svg{min-width:560px}
+}
 </style>
 </head>
 <body>

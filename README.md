@@ -25,7 +25,7 @@ flowchart TD
   F --> H["Google Drive"]
 ```
 
-Data scale: ~194 tagged individuals · 5 years · ~134 species · ~60 families · 25 Taiwan endemics.
+Data scale: 195 tagged individuals · 5 years · 134 species · 59 families · 25 Taiwan endemics.
 
 ---
 
@@ -40,7 +40,7 @@ A community survey records the seasonal rhythm — **leaf 🍃 / flower 🌸 / f
 - Normalized into a tidy model: one value per **(individual, year, month, phenophase)**.
 
 ### Cross-year identity — the core challenge
-Tag numbers (編號) are unstable between years (blank, duplicated, re-numbered). Individuals are linked across years by a **composite key** — normalized species name + growth form + trail side + walking order — anchored on the most recent year as the registry. Auto-match covers ~95%; a small set of **surveyor-confirmed manual links is locked in** (e.g. notes mentioning re-tagging or a replaced plant).
+Tag numbers (編號) are unstable between years (blank, duplicated, re-numbered). Individuals are linked across years by a **composite key** — normalized species name + growth form + trail side + walking order — anchored on the most recent year as the registry. Auto-match covers 97–99%; alias names are learned from the master sheet itself, and any remaining case can be pinned in `tools/locked_matches.json`.
 
 ### Taxonomy
 Names are resolved against the **Catalogue of Life in Taiwan (TaiCoL)** — Taiwan-accepted scientific name, family & genus (Chinese + Latin), endemism, and IUCN / national Red List status; **iNaturalist** is the fallback. The dataset carries 25 Taiwan endemics and conservation flags including one Critically Endangered species.
@@ -54,7 +54,13 @@ Names are resolved against the **Catalogue of Life in Taiwan (TaiCoL)** — Taiw
 Bilingual **中 / EN** toggle (EN shows scientific names + Latin family/genus). Single self-contained HTML — data embedded, **works offline, no backend**.
 
 ### Pipeline & updates
-`Sheet → parse → cross-year match → TaiCoL taxonomy (cached) → phenology_data.json → injected into the HTML → GitHub Pages`. After each survey update the maintainer re-runs this chain (one command) and redeploys; the taxonomy cache means it normally runs offline in seconds.
+`Sheet → parse → cross-year match → TaiCoL taxonomy (cached) → phenology_data.json → injected into the HTML → GitHub Pages`. The whole chain lives in [`tools/`](tools/) and runs as one command:
+
+```bash
+python3 tools/build.py path/to/source.xlsx
+```
+
+The taxonomy cache is committed, so it normally runs offline in seconds. The build refuses to publish if any observation fails to match the registry, if a species cannot be resolved, or if a completed year loses more than 10% of its values. **A scheduled monthly sync** re-runs it against the live sheet and pushes to `main`; see [`tools/README.md`](tools/README.md).
 
 ### Tech
 Vanilla HTML / CSS / JS, hand-rolled SVG charts, no runtime dependencies. Brand palette from the 二格山 visual identity (荒野綠 / 黃 / 紅).
@@ -80,7 +86,7 @@ Vanilla HTML / CSS / JS, hand-rolled SVG charts, no runtime dependencies. Brand 
 - 正規化為長表:每筆 = **(個體, 年, 月, 物候相) = 狀態值**。
 
 ### 跨年個體辨識 —— 核心挑戰
-編號跨年不穩定(空白、重複、重新編號)。以**複合鍵**(正規化物種名 + 形相 + 步道左右 + 踏查順序)跨年比對,並以最新年度為主檔。自動命中約 95%,少數**經踏查者確認的對應已鎖定**(如備註提到換牌或植株替換者)。
+編號跨年不穩定(空白、重複、重新編號)。以**複合鍵**(正規化物種名 + 形相 + 步道左右 + 踏查順序)跨年比對,並以最新年度為主檔。自動命中約 97–99%,別名直接從主檔名稱欄學,剩下真的修不好的可寫進 `tools/locked_matches.json` 鎖定。
 
 ### 分類
 以 **臺灣物種名錄(TaiCoL)** 解析:臺灣接受學名、科與屬(中文 + 拉丁)、特有性、IUCN / 國家紅皮書狀態;**iNaturalist** 為後備。資料含 25 種臺灣特有種,以及保育標記(含 1 種極危 CR)。
@@ -94,7 +100,13 @@ Vanilla HTML / CSS / JS, hand-rolled SVG charts, no runtime dependencies. Brand 
 提供 **中 / EN** 雙語切換(英文模式顯示學名與拉丁科屬)。單一自包含 HTML —— 資料內嵌、**可離線、無需後端**。
 
 ### 管線與更新
-`Sheet → 解析 → 跨年比對 → TaiCoL 分類(快取)→ phenology_data.json → 注入 HTML → GitHub Pages`。每次踏查更新後,維護者一鍵重跑此鏈並重新部署;因有分類快取,平時離線數秒內完成。
+`Sheet → 解析 → 跨年比對 → TaiCoL 分類(快取)→ phenology_data.json → 注入 HTML → GitHub Pages`。整條管線放在 [`tools/`](tools/),一行指令跑完:
+
+```bash
+python3 tools/build.py path/to/source.xlsx
+```
+
+分類快取跟著版本庫走,平時離線數秒內完成。若有觀測值對不上主檔、有物種查不到分類,或已完成年度的觀測值掉超過一成,會直接擋下不發布。**每月排程自動同步**會對著線上試算表重跑並推上 `main`,細節見 [`tools/README.md`](tools/README.md)。
 
 ### 技術
 純 HTML / CSS / JS、手刻 SVG 圖表,無執行時相依。配色取自二格山視覺識別(荒野綠 / 黃 / 紅)。

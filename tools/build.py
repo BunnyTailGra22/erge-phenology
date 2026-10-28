@@ -60,6 +60,18 @@ def load_years(workbook_path):
     return tabs, {tab: sheet_parse.parse_year(wb[tab]) for tab in tabs}
 
 
+def year_stats(year_rows, individuals, year, unmatched):
+    return {
+        "rows": len(year_rows),
+        "values_in_sheet": sum(1 for r in year_rows if r["has_data"]
+                               for p in r["obs"].values() for v in p if v is not None),
+        "values_assigned": sum(1 for ind in individuals
+                               for p in ind["obs"][year].values() for v in p if v is not None),
+        "dropped": [{"row": year_rows[i]["row"], "name": year_rows[i]["name"]}
+                    for i in unmatched],
+    }
+
+
 def build(workbook_path, cache_path, locked_path, online=False):
     years, raw = load_years(workbook_path)
     master_year = years[-1]
@@ -75,40 +87,53 @@ def build(workbook_path, cache_path, locked_path, online=False):
     rows = {y: (master if y == master_year else match.normalize(raw[y], alias, partial_log))
             for y in years}
 
-    individuals = []
-    for i, r in enumerate(master, start=1):
-        individuals.append({
-            "uid": f"U{i:03d}",
-            "seq": i,
-            "rid": r["rid"],
-            "name": r["name"],
-            "species": r["species"],
-            "form": r["form"],
-            "side": r["side"],
-            "note": r["note"],
+    def make_individual(row, seq):
+        return {
+            "uid": f"U{seq:03d}",
+            "seq": seq,
+            "rid": row["rid"],
+            "name": row["name"],
+            "species": row["species"],
+            "form": row["form"],
+            "side": row["side"],
+            "note": row["note"],
+            "retired": False,
             "obs": {y: empty_obs() for y in years},
             "obs_years": [],
-        })
+        }
 
-    stats = {}
-    for y in years:
+    # 登錄主檔以最新年度為準，但主檔年度除名的個體若往年留有觀測值，會接在
+    # 後面繼續存在（retired），否則那些紀錄會隨著今年的除名一起消失。
+    registry = list(master)
+    individuals = [make_individual(r, i) for i, r in enumerate(master, start=1)]
+    for i in range(len(master)):
+        individuals[i]["obs"][master_year] = master[i]["obs"]
+
+    stats = {master_year: year_stats(master, individuals, master_year, [])}
+    carried = []
+    # 由新到舊：較晚的年度先把除名個體接進登錄主檔，更早的年度才對得上它們。
+    for y in reversed(years[:-1]):
         mapping, unmatched = match.match_year(
-            master, rows[y], locked=locked if y != master_year else (),
-            fallback_log=fallback_log)
+            registry, rows[y], locked=locked, fallback_log=fallback_log)
         for i, j in mapping.items():
             individuals[j]["obs"][y] = rows[y][i]["obs"]
-        in_sheet = sum(1 for r in rows[y] if r["has_data"]
-                       for p in r["obs"].values() for v in p if v is not None)
-        assigned = sum(1 for ind in individuals
-                       for p in ind["obs"][y].values() for v in p if v is not None)
-        stats[y] = {
-            "rows": len(rows[y]),
-            "values_in_sheet": in_sheet,
-            "values_assigned": assigned,
-            "dropped": [
-                {"row": rows[y][i]["row"], "name": rows[y][i]["name"]} for i in unmatched
-            ],
-        }
+        still = []
+        for i in unmatched:
+            row = rows[y][i]
+            if not row["has_data"]:
+                continue
+            registry.append(row)
+            ind = make_individual(row, len(individuals) + 1)
+            ind["retired"] = True
+            ind["obs"][y] = row["obs"]
+            individuals.append(ind)
+            carried.append({"name": row["name"], "species": row["species"], "last_year": y})
+            match.add_alias(alias, row["name"], row["species"])
+            still.append(i)
+        if still:
+            match.rank_registry(registry)
+        stats[y] = year_stats(rows[y], individuals, y,
+                              [i for i in unmatched if i not in still])
 
     for ind in individuals:
         ind["obs_years"] = [y for y in years
@@ -127,6 +152,8 @@ def build(workbook_path, cache_path, locked_path, online=False):
         notes.append(f"{len(locked)} 筆人工鎖定")
     if fallback_log:
         notes.append(f"{len(fallback_log)} 筆同物種遞補")
+    if carried:
+        notes.append(f"{len(carried)} 株主檔已除名、保留歷史")
     data = {
         "meta": {
             "years": years,
@@ -146,6 +173,7 @@ def build(workbook_path, cache_path, locked_path, online=False):
         "taxonomy_missing": missing,
         "partial_name_matches": sorted({(a, b) for a, b, _ in partial_log}),
         "fallback_matches": fallback_log,
+        "carried_over": carried,
     }
     return data, report
 
@@ -209,6 +237,7 @@ def summarize(data, report, previous):
         lines.append(f"  {year}: {now} 筆觀測值{delta}")
     for label, key in (("部分名稱比對", "partial_name_matches"),
                        ("同物種遞補", "fallback_matches"),
+                       ("主檔除名保留", "carried_over"),
                        ("新增分類", "taxonomy_added")):
         if report[key]:
             lines.append(f"  {label}: {report[key]}")

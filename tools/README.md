@@ -6,9 +6,12 @@ Rebuilds the dashboard dataset from the survey Google Sheet and injects it into 
 ## 一鍵重跑 ｜ One command
 
 ```bash
-pip install openpyxl
+python3 -m pip install openpyxl
 python3 tools/build.py path/to/source.xlsx
 ```
+
+裝套件請用 `python3 -m pip`，不要用裸的 `pip`：有些環境裡 `pip` 與 `python3`
+指向不同版本的 Python，裸 `pip` 會裝到跑不到的地方。
 
 來源檔是 Google Sheet「**二格山稜線x植物物候踏查**」匯出的 `.xlsx`
 (`1FTf9yk94tVLM2x2Tc_n3YnNeePBp7iLfMJvymup3O_w`)。
@@ -60,6 +63,11 @@ python3 tools/build.py path/to/source.xlsx
 
 沒有任何觀測值的列不參與比對：它們不帶資訊，配上了也不會改變輸出，卻會佔掉名額。
 
+年度由新到舊處理。主檔年度已除名、但往年留有觀測值的個體，會接在登錄主檔後面
+繼續存在並標記 `retired: true`（儀表板上顯示「已不再追蹤」徽章），更早的年度仍
+對得上它們。否則踏查團隊只要從最新年度刪掉一列，那一株的整段歷史就會跟著消失。
+沒有任何觀測值的除名列不會保留——本來就沒有東西要留。
+
 自動比對命中率約 97–99%；真的修不好的再寫進 `locked_matches.json`：
 
 ```json
@@ -75,6 +83,9 @@ python3 tools/build.py path/to/source.xlsx
 * 出現快取與 TaiCoL 都查不到的物種
 * 個體數為 0
 * 已完成年度的觀測值比上次少超過一成（通常代表分頁被動過）
+
+主檔除名而保留下來的個體會列在報告的「主檔除名保留」，值得人看一眼：那代表
+踏查團隊從最新年度拿掉了一株。
 
 ## 已知的資料脾氣 ｜ Known quirks
 

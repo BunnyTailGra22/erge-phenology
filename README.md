@@ -25,7 +25,7 @@ flowchart TD
   F --> H["Google Drive"]
 ```
 
-Data scale: 195 tagged individuals · 5 years · 134 species · 59 families · 25 Taiwan endemics.
+Data scale: 193 tagged individuals · 5 years · 133 species · 59 families · 24 Taiwan endemics.
 
 ---
 
@@ -40,7 +40,7 @@ A community survey records the seasonal rhythm — **leaf 🍃 / flower 🌸 / f
 - Normalized into a tidy model: one value per **(individual, year, month, phenophase)**.
 
 ### Cross-year identity — the core challenge
-Tag numbers (編號) are unstable between years (blank, duplicated, re-numbered). Individuals are linked across years by a **composite key** — normalized species name + growth form + trail side + walking order — anchored on the most recent year as the registry. Auto-match covers 97–99%; alias names are learned from the master sheet itself, and any remaining case can be pinned in `tools/locked_matches.json`.
+Tag numbers (編號) are unstable between years (blank, duplicated, re-numbered). Individuals are linked across years by a **composite key** — normalized species name + growth form + trail side + walking order — anchored on the most recent year as the registry. An individual dropped from the latest year keeps its place (flagged `retired`) so its history survives delisting. Auto-match covers 97–99%; alias names are learned from the master sheet itself, and any remaining case can be pinned in `tools/locked_matches.json`.
 
 ### Taxonomy
 Names are resolved against the **Catalogue of Life in Taiwan (TaiCoL)** — Taiwan-accepted scientific name, family & genus (Chinese + Latin), endemism, and IUCN / national Red List status; **iNaturalist** is the fallback. The dataset carries 25 Taiwan endemics and conservation flags including one Critically Endangered species.
@@ -86,7 +86,7 @@ Vanilla HTML / CSS / JS, hand-rolled SVG charts, no runtime dependencies. Brand 
 - 正規化為長表:每筆 = **(個體, 年, 月, 物候相) = 狀態值**。
 
 ### 跨年個體辨識 —— 核心挑戰
-編號跨年不穩定(空白、重複、重新編號)。以**複合鍵**(正規化物種名 + 形相 + 步道左右 + 踏查順序)跨年比對,並以最新年度為主檔。自動命中約 97–99%,別名直接從主檔名稱欄學,剩下真的修不好的可寫進 `tools/locked_matches.json` 鎖定。
+編號跨年不穩定(空白、重複、重新編號)。以**複合鍵**(正規化物種名 + 形相 + 步道左右 + 踏查順序)跨年比對,並以最新年度為主檔。最新年度已除名、但往年留有觀測值的個體會保留下來(標記「已不再追蹤」),歷史不會隨除名消失。自動命中約 97–99%,別名直接從主檔名稱欄學,剩下真的修不好的可寫進 `tools/locked_matches.json` 鎖定。
 
 ### 分類
 以 **臺灣物種名錄(TaiCoL)** 解析:臺灣接受學名、科與屬(中文 + 拉丁)、特有性、IUCN / 國家紅皮書狀態;**iNaturalist** 為後備。資料含 25 種臺灣特有種,以及保育標記(含 1 種極危 CR)。

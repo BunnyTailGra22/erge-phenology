@@ -130,6 +130,36 @@ def normalize(rows, alias, partial_log=None, is_master=False):
     return rows
 
 
+def add_alias(alias, name, species):
+    """把一個名稱（含其並列別名）登記到對照表，指向指定的物種名。"""
+    for variant in [species] + variants_of(name):
+        key = _certain(variant)
+        if not key:
+            continue
+        owners = alias.setdefault(key, [])
+        if species not in owners:
+            owners.append(species)
+
+
+def rank_registry(registry):
+    """重算登錄主檔每一列的各層序號（依登錄順序）。
+
+    主檔年度已除名、但往年留有觀測值的個體會被接在後面，接上之後序號要重編，
+    否則更早的年度會對不上它們。
+    """
+    seen = collections.Counter()
+    form_seen = collections.Counter()
+    species_seen = collections.Counter()
+    for r in registry:
+        seen[(r["species"], r["form"], r["side_n"])] += 1
+        form_seen[(r["species"], r["form"])] += 1
+        species_seen[r["species"]] += 1
+        r["nth"] = seen[(r["species"], r["form"], r["side_n"])]
+        r["form_nth"] = form_seen[(r["species"], r["form"])]
+        r["species_nth"] = species_seen[r["species"]]
+    return registry
+
+
 def _index(master_rows):
     """主檔的三層索引：嚴格鍵 → 忽略左右 → 只看物種。"""
     strict, no_side, species_only = {}, {}, {}

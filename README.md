@@ -45,11 +45,12 @@ Tag numbers (編號) are unstable between years (blank, duplicated, re-numbered)
 ### Taxonomy
 Names are resolved against the **Catalogue of Life in Taiwan (TaiCoL)** — Taiwan-accepted scientific name, family & genus (Chinese + Latin), endemism, and IUCN / national Red List status; **iNaturalist** is the fallback. The dataset carries 25 Taiwan endemics and conservation flags including one Critically Endangered species.
 
-### Dashboard — four views
+### Dashboard — five views
 1. **Community curve** — share of individuals reaching a phenophase each month, 5 years overlaid.
 2. **Taxon yearly trend** — active span & peak per year; roll up species → genus → family.
 3. **Cross-species sequence** — individuals ordered by onset month (the seasonal relay).
 4. **Individual calendar** — month × year grid per plant, with taxonomy & conservation badges.
+5. **Taxonomy tree** — family → genus → species → individual for the current filters, expand/collapse per node.
 
 Bilingual **中 / EN** toggle (EN shows scientific names + Latin family/genus). Single self-contained HTML — data embedded, **works offline, no backend**.
 
@@ -91,11 +92,12 @@ Vanilla HTML / CSS / JS, hand-rolled SVG charts, no runtime dependencies. Brand 
 ### 分類
 以 **臺灣物種名錄(TaiCoL)** 解析:臺灣接受學名、科與屬(中文 + 拉丁)、特有性、IUCN / 國家紅皮書狀態;**iNaturalist** 為後備。資料含 25 種臺灣特有種,以及保育標記(含 1 種極危 CR)。
 
-### 儀表板 —— 四個視圖
+### 儀表板 —— 五個視圖
 1. **群落物候曲線** —— 各月達某物候相的個體比例,5 年疊圖。
 2. **分類年際趨勢** —— 各年活躍區間與盛期;可由物種上捲到屬、科。
 3. **跨物種季節序列** —— 個體依起始月排序的季節接力。
 4. **個體物候月曆** —— 每株的 月 × 年 格圖,附分類與保育徽章。
+5. **分類樹狀圖** —— 目前篩選範圍的 科 → 屬 → 物種 → 個體,可逐節點展開收合。
 
 提供 **中 / EN** 雙語切換(英文模式顯示學名與拉丁科屬)。單一自包含 HTML —— 資料內嵌、**可離線、無需後端**。
 

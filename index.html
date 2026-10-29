@@ -106,6 +106,7 @@ a{color:var(--accent)}
       <button data-t="taxon" data-i18n="tabTaxon">分類年際趨勢</button>
       <button data-t="sequence" data-i18n="tabSequence">跨物種季節序列</button>
       <button data-t="individual" data-i18n="tabIndividual">個體物候月曆</button>
+      <button data-t="tree" data-i18n="tabTree">分類樹狀圖</button>
     </div>
     <div id="view"></div>
   </main>
@@ -134,6 +135,14 @@ const T={
  onlyObs:{zh:"只看有觀測記錄的個體",en:"Observed individuals only"},
  onlyEndemic:{zh:"只看臺灣特有種",en:"Taiwan endemics only"},
  retired:{zh:"已不再追蹤",en:"No longer tracked"},
+ tabTree:{zh:"分類樹狀圖",en:"Taxonomy tree"},
+ treeDesc:{zh:"目前篩選範圍內的 科 → 屬 → 物種 → 個體。點節點可展開或收合；括號為 物種數 · 個體數。",
+           en:"Family → genus → species → individual within the current filters. Click a node to expand or collapse; brackets show species · individuals."},
+ treeExpand:{zh:"全部展開",en:"Expand all"},
+ treeCollapse:{zh:"全部收合",en:"Collapse all"},
+ treeEmpty:{zh:"目前篩選範圍內沒有個體。",en:"No individuals in the current filters."},
+ treeTrunc:{zh:"節點過多，僅顯示前 {n} 列。請用左側篩選縮小範圍。",
+            en:"Too many nodes; showing the first {n} rows. Narrow the scope with the filters on the left."},
  retiredNote:{zh:"此株已不在最新年度的掛牌名單中，僅保留歷史記錄。",en:"No longer on the latest year's tag list; historical records kept."},
  reset:{zh:"清除篩選",en:"Clear filters"},
  tabCommunity:{zh:"群落物候曲線",en:"Community curve"},tabTaxon:{zh:"分類年際趨勢",en:"Taxon trend"},
@@ -204,9 +213,17 @@ function observed(ind){return (ind.obs_years||[]).length>0;}
 function pool(){return D.individuals.filter(i=>!S.onlyObs||observed(i));}
 function inScope(){return pool().filter(i=>(!S.fam||i.fam===S.fam)&&(!S.gen||i.gen===S.gen)&&(!S.sp||i.species===S.sp)&&(!S.endemic||i.endemic)&&consMatch(i,S.cons));}
 function uniq(arr){return [...new Set(arr.filter(Boolean))].sort((a,b)=>a.localeCompare(b,"zh-Hant"));}
-// 科／屬改以個體數排序：先看哪一類最多株，同數再按名稱。
-function tally(inds,key){const m=new Map();inds.forEach(i=>{const k=i[key];if(k)m.set(k,(m.get(k)||0)+1);});return m;}
-function byTally(m){return [...m.keys()].sort((a,b)=>m.get(b)-m.get(a)||a.localeCompare(b,"zh-Hant"));}
+// 科／屬同時統計物種數與個體數，排序以物種數為主、個體數次之，同數再按名稱。
+function tally(inds,key){const m=new Map();
+  inds.forEach(i=>{const k=i[key];if(!k)return;
+    let e=m.get(k); if(!e){e={n:0,sp:new Set()};m.set(k,e);}
+    e.n++; if(i.species)e.sp.add(i.species);});
+  return m;}
+function byTally(m){return [...m.keys()].sort((a,b)=>
+  m.get(b).sp.size-m.get(a).sp.size || m.get(b).n-m.get(a).n || a.localeCompare(b,"zh-Hant"));}
+function tallyLabel(e){return EN()?`(${e.sp.size} spp · ${e.n} ind)`:`(${e.sp.size} 種 · ${e.n} 株)`;}
+function allLabel(inds){const sp=new Set(inds.map(i=>i.species).filter(Boolean)).size;
+  return EN()?`(${sp} spp · ${inds.length} ind)`:`(${sp} 種 · ${inds.length} 株)`;}
 
 // ---- filters UI ----
 function fillSelect(el,items,cur,allLabel,labelFn){
@@ -216,12 +233,12 @@ function fillSelect(el,items,cur,allLabel,labelFn){
 function buildFilters(){
   const base=pool();
   const famN=tally(base,"fam");
-  fillSelect(selFam,byTally(famN),S.fam,`${t('allFam')} (${base.length})`,
-    v=>`${S.lang==='en'?(FAMS[v]||v):v} (${famN.get(v)})`);
+  fillSelect(selFam,byTally(famN),S.fam,`${t('allFam')} ${allLabel(base)}`,
+    v=>`${S.lang==='en'?(FAMS[v]||v):v} ${tallyLabel(famN.get(v))}`);
   const genBase=base.filter(i=>!S.fam||i.fam===S.fam);
   const genN=tally(genBase,"gen");
-  fillSelect(selGen,byTally(genN),S.gen,`${t('allGen')} (${genBase.length})`,
-    v=>`${S.lang==='en'?(GENS[v]||v):v} (${genN.get(v)})`);
+  fillSelect(selGen,byTally(genN),S.gen,`${t('allGen')} ${allLabel(genBase)}`,
+    v=>`${S.lang==='en'?(GENS[v]||v):v} ${tallyLabel(genN.get(v))}`);
   const spBase=genBase.filter(i=>!S.gen||i.gen===S.gen);
   let spItems=uniq(spBase.map(i=>i.species));
   const spq=(S.spq||"").trim().toLowerCase();
@@ -398,6 +415,149 @@ function viewIndividual(){
   </div>`;
 }
 
+// ---- 分類樹狀圖 ----
+// 縮排式樹狀圖：深度由位置決定，不另外用色相編碼（科／屬／種／個體四層
+// 中文名稱分欄橫排會嚴重溢出，縮排才容得下長名稱）。
+const TREE_OPEN=new Set();
+const TREE_MAX_ROWS=600;
+const TREE_AUTO_ROWS=60;   // 全開後不超過這麼多列就直接攤開
+let TREE_ROWS=[],TREE_SCOPE=null;
+
+function treeNest(inds){
+  const fams=new Map();
+  inds.forEach(i=>{
+    const f=i.fam||"—",g=i.gen||"—",sp=i.species||"—";
+    if(!fams.has(f))fams.set(f,new Map());
+    const gm=fams.get(f);
+    if(!gm.has(g))gm.set(g,new Map());
+    const sm=gm.get(g);
+    if(!sm.has(sp))sm.set(sp,[]);
+    sm.get(sp).push(i);
+  });
+  return fams;
+}
+function treeSort(entries,countFn){
+  return entries.sort((a,b)=>{const A=countFn(a[1]),B=countFn(b[1]);
+    return B.sp-A.sp||B.n-A.n||a[0].localeCompare(b[0],"zh-Hant");});
+}
+function genStats(gm){let n=0;const sp=new Set();
+  gm.forEach((sm,g)=>sm.forEach((list,s)=>{n+=list.length;sp.add(s);}));return {n,sp:sp.size};}
+function spStats(sm){let n=0;sm.forEach(list=>n+=list.length);return {n,sp:sm.size};}
+
+function treeRows(inds){
+  const rows=[];
+  const fams=treeNest(inds);
+  treeSort([...fams.entries()],gm=>{const x=genStats(gm);return {sp:x.sp,n:x.n};}).forEach(([f,gm])=>{
+    const fs=genStats(gm),fk="f\u0000"+f;
+    const fOpen=TREE_OPEN.has(fk);
+    rows.push({d:0,k:fk,label:EN()?(FAMS[f]||f):f,sp:fs.sp,n:fs.n,kids:true,open:fOpen});
+    if(!fOpen)return;
+    treeSort([...gm.entries()],sm=>spStats(sm)).forEach(([g,sm])=>{
+      const gs=spStats(sm),gk=fk+"\u0000"+g;
+      const gOpen=TREE_OPEN.has(gk);
+      rows.push({d:1,k:gk,label:EN()?(GENS[g]||g):g,sp:gs.sp,n:gs.n,kids:true,open:gOpen});
+      if(!gOpen)return;
+      [...sm.entries()].sort((a,b)=>b[1].length-a[1].length||a[0].localeCompare(b[0],"zh-Hant"))
+        .forEach(([sp,list])=>{
+          const sk=gk+"\u0000"+sp,sOpen=TREE_OPEN.has(sk);
+          rows.push({d:2,k:sk,label:EN()?(SPS[sp]||sp):sp,n:list.length,kids:true,open:sOpen,sci:EN()});
+          if(!sOpen)return;
+          list.slice().sort((a,b)=>a.seq-b.seq).forEach(i=>{
+            rows.push({d:3,k:sk+"\u0000"+i.uid,label:`${i.uid} · ${indName(i)}`,
+                       kids:false,ind:i});
+          });
+        });
+    });
+  });
+  return rows;
+}
+
+// 換了篩選範圍就重新決定展開程度：小樹直接全開（篩完就該看得到裡面），
+// 大樹維持收合。同一個範圍內則尊重使用者自己點出來的狀態。
+function treeAutoOpen(inds){
+  const sig=[S.fam,S.gen,S.sp,S.cons,S.endemic,S.onlyObs,inds.length].join("\u0000");
+  if(sig===TREE_SCOPE)return;
+  TREE_SCOPE=sig;
+  TREE_OPEN.clear();
+  const keys=treeRowsAllKeys(inds);
+  if(keys.length+inds.length<=TREE_AUTO_ROWS)keys.forEach(k=>TREE_OPEN.add(k));
+}
+
+function viewTree(){
+  const inds=inScope();
+  treeAutoOpen(inds);
+  const head=`<div class="card panel"><h2>${t('tabTree')}</h2>
+    <div class="desc">${t('treeDesc')}</div>
+    <div class="seg" style="max-width:260px;margin-bottom:12px">
+      <button onclick="window._treeAll(1)">${t('treeExpand')}</button>
+      <button onclick="window._treeAll(0)">${t('treeCollapse')}</button>
+    </div>`;
+  if(!inds.length)return head+`<div class="empty">${t('treeEmpty')}</div></div>`;
+
+  let rows=treeRows(inds);
+  const over=rows.length>TREE_MAX_ROWS;
+  if(over)rows=rows.slice(0,TREE_MAX_ROWS);
+  TREE_ROWS=rows;
+
+  const rowH=24,indent=22,padL=16,padT=16,labelX=13;
+  const H=padT+rows.length*rowH+10, W=760;
+  let g=svg(W,H);
+
+  // 連接線：由父節點的垂直線拉到各子節點，細髮絲實線。
+  const yOf=r=>padT+r*rowH+rowH/2;
+  rows.forEach((r,ri)=>{
+    if(r.d===0)return;
+    // 找父列
+    let pi=ri-1; while(pi>=0&&rows[pi].d>=r.d)pi--;
+    if(pi<0)return;
+    const px=padL+rows[pi].d*indent, x=padL+r.d*indent;
+    // 最後一個同層手足決定垂直線要畫到哪
+    let last=ri; for(let j=ri+1;j<rows.length;j++){if(rows[j].d<r.d)break;if(rows[j].d===r.d)last=j;}
+    if(ri===pi+1)g+=ln(px,yOf(pi)+6,px,yOf(last),css('--line'));
+    g+=ln(px,yOf(ri),x-4,yOf(ri),css('--line'));
+  });
+
+  rows.forEach((r,ri)=>{
+    const x=padL+r.d*indent,y=yOf(ri);
+    if(r.kids){
+      // 可展開的節點：實心圓點＋三角指示
+      g+=`<circle cx="${x}" cy="${y}" r="3.5" fill="${css('--accent')}"/>`;
+      g+=txt(x-14,y+4,r.open?"\u25be":"\u25b8",{fill:css('--muted'),fs:11});
+    }else{
+      g+=`<circle cx="${x}" cy="${y}" r="3.5" fill="#fff" stroke="${css('--accent2')}" stroke-width="1.5"/>`;
+    }
+    const bold=r.d===0?600:(r.d===1?500:400);
+    const italic=r.d===2&&r.sci?' font-style="italic"':'';
+    g+=`<text x="${x+labelX}" y="${y+4}" fill="${css('--ink')}" font-size="${r.d===0?13:12}" font-weight="${bold}"${italic}>${r.label}</text>`;
+    const meta=r.kids
+      ? (r.sp!==undefined?(EN()?`${r.sp} spp · ${r.n} ind`:`${r.sp} 種 · ${r.n} 株`)
+                         :(EN()?`${r.n} ind`:`${r.n} 株`))
+      : (r.ind&&r.ind.retired?t('retired'):"");
+    if(meta)g+=txt(W-14,y+4,meta,{a:"end",fill:css('--muted'),fs:11});
+    // 整列可點。傳的是列索引而非節點鍵：名稱裡若有引號或分隔字元，
+    // 內嵌成字串會把 onclick 弄壞。
+    if(r.kids)g+=`<rect x="0" y="${y-rowH/2}" width="${W}" height="${rowH}" fill="transparent" style="cursor:pointer" onclick="window._treeToggle(${ri})"><title>${r.label}</title></rect>`;
+  });
+  g+="</svg>";
+
+  const note=over?`<div class="note">${t('treeTrunc').replace('{n}',TREE_MAX_ROWS)}</div>`:"";
+  return head+`<div class="scroll">${g}</div>${note}</div>`;
+}
+window._treeToggle=ri=>{const r=TREE_ROWS[ri];if(!r)return;
+  if(TREE_OPEN.has(r.k))TREE_OPEN.delete(r.k);else TREE_OPEN.add(r.k);render();};
+window._treeAll=on=>{
+  TREE_OPEN.clear();
+  if(on)treeRowsAllKeys(inScope()).forEach(k=>TREE_OPEN.add(k));
+  render();};
+// 全開／全收與單一節點切換都是使用者的決定，之後同一範圍內不再自動調整。
+function treeRowsAllKeys(inds){
+  const keys=[],fams=treeNest(inds);
+  fams.forEach((gm,f)=>{const fk="f\u0000"+f;keys.push(fk);
+    gm.forEach((sm,g)=>{const gk=fk+"\u0000"+g;keys.push(gk);
+      sm.forEach((list,sp)=>keys.push(gk+"\u0000"+sp));});});
+  return keys;
+}
+
 // ---- render dispatch ----
 function render(){
   buildFilters();
@@ -407,6 +567,7 @@ function render(){
   if(S.tab==="community")v.innerHTML=viewCommunity();
   else if(S.tab==="taxon")v.innerHTML=viewTaxon();
   else if(S.tab==="sequence")v.innerHTML=viewSequence();
+  else if(S.tab==="tree")v.innerHTML=viewTree();
   else v.innerHTML=viewIndividual();
 }
 function applyLang(){

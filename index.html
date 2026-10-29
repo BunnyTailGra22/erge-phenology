@@ -74,7 +74,7 @@ a{color:var(--accent)}
   <div class="hrow">
     <div>
       <h1 id="h-title" data-i18n="title">二格山稜線 · 植物物候趨勢</h1>
-      <div class="sub" data-i18n-html="sub"><span class="beta">Beta version</span>火之道 ｜ 2022–2026 · 葉🍃 / 花🌸 / 果🌰 月別物候 · <a href="https://www.inaturalist.org/projects/erge-mountain-trail" target="_blank" rel="noopener">iNaturalist 專案</a></div>
+      <div class="sub" data-i18n-html="sub"><span class="beta">Beta version</span>火之道 ｜ 2022–2026 · 花🌸 / 果🌰 / 葉🍃 月別物候 · <a href="https://www.inaturalist.org/projects/erge-mountain-trail" target="_blank" rel="noopener">iNaturalist 專案</a></div>
     </div>
     <div id="langSeg"><button data-l="zh" class="on">中</button><button data-l="en">EN</button></div>
   </div>
@@ -83,9 +83,9 @@ a{color:var(--accent)}
   <aside id="controls" class="panel">
     <h3 data-i18n="phaseHdr">物候相</h3>
     <div class="seg" id="phaseSeg">
-      <button data-p="leaf" data-i18n="ph_leaf">葉</button>
       <button data-p="flower" class="on" data-i18n="ph_flower">花</button>
       <button data-p="fruit" data-i18n="ph_fruit">果</button>
+      <button data-p="leaf" data-i18n="ph_leaf">葉</button>
     </div>
     <h3 style="margin-top:16px" data-i18n="taxoHdr">分類階層</h3>
     <label data-i18n="lFam">科</label><select id="selFam"></select>
@@ -125,7 +125,7 @@ let S={phase:"flower",fam:"",gen:"",sp:"",spq:"",ind:"",onlyObs:true,endemic:fal
 // ---- i18n ----
 const T={
  title:{zh:"二格山稜線 · 植物物候趨勢",en:"Mt. Erge Ridge · Plant Phenology"},
- sub:{zh:`<span class="beta">Beta version</span>火之道 ｜ 2022–2026 · 葉🍃 / 花🌸 / 果🌰 月別物候 · <a href="https://www.inaturalist.org/projects/erge-mountain-trail" target="_blank" rel="noopener">iNaturalist 專案</a>`,en:`<span class="beta">Beta version</span>Huozhidao | 2022–2026 · monthly Leaf🍃 / Flower🌸 / Fruit🌰 phenology · <a href="https://www.inaturalist.org/projects/erge-mountain-trail" target="_blank" rel="noopener">iNaturalist project</a>`},
+ sub:{zh:`<span class="beta">Beta version</span>火之道 ｜ 2022–2026 · 花🌸 / 果🌰 / 葉🍃 月別物候 · <a href="https://www.inaturalist.org/projects/erge-mountain-trail" target="_blank" rel="noopener">iNaturalist 專案</a>`,en:`<span class="beta">Beta version</span>Huozhidao | 2022–2026 · monthly Flower🌸 / Fruit🌰 / Leaf🍃 phenology · <a href="https://www.inaturalist.org/projects/erge-mountain-trail" target="_blank" rel="noopener">iNaturalist project</a>`},
  footer:{zh:"分類資料：臺灣物種名錄 TaiCoL（api.taicol.tw）、iNaturalist ｜ 物候踏查：二格山稜線踏查團隊 ｜ 2022–2026",en:"Taxonomy: TaiCoL (api.taicol.tw), iNaturalist | Phenology survey: Mt. Erge Ridge team | 2022–2026"},
  phaseHdr:{zh:"物候相",en:"Phenophase"},taxoHdr:{zh:"分類階層",en:"Taxonomy"},
  ph_leaf:{zh:"葉",en:"Leaf"},ph_flower:{zh:"花",en:"Flower"},ph_fruit:{zh:"果",en:"Fruit"},
@@ -204,6 +204,9 @@ function observed(ind){return (ind.obs_years||[]).length>0;}
 function pool(){return D.individuals.filter(i=>!S.onlyObs||observed(i));}
 function inScope(){return pool().filter(i=>(!S.fam||i.fam===S.fam)&&(!S.gen||i.gen===S.gen)&&(!S.sp||i.species===S.sp)&&(!S.endemic||i.endemic)&&consMatch(i,S.cons));}
 function uniq(arr){return [...new Set(arr.filter(Boolean))].sort((a,b)=>a.localeCompare(b,"zh-Hant"));}
+// 科／屬改以個體數排序：先看哪一類最多株，同數再按名稱。
+function tally(inds,key){const m=new Map();inds.forEach(i=>{const k=i[key];if(k)m.set(k,(m.get(k)||0)+1);});return m;}
+function byTally(m){return [...m.keys()].sort((a,b)=>m.get(b)-m.get(a)||a.localeCompare(b,"zh-Hant"));}
 
 // ---- filters UI ----
 function fillSelect(el,items,cur,allLabel,labelFn){
@@ -212,10 +215,13 @@ function fillSelect(el,items,cur,allLabel,labelFn){
 }
 function buildFilters(){
   const base=pool();
-  const fams=uniq(base.map(i=>i.fam));
-  fillSelect(selFam,fams,S.fam,t('allFam')+" ("+fams.length+")",v=>S.lang==='en'?(FAMS[v]||v):v);
+  const famN=tally(base,"fam");
+  fillSelect(selFam,byTally(famN),S.fam,`${t('allFam')} (${base.length})`,
+    v=>`${S.lang==='en'?(FAMS[v]||v):v} (${famN.get(v)})`);
   const genBase=base.filter(i=>!S.fam||i.fam===S.fam);
-  fillSelect(selGen,uniq(genBase.map(i=>i.gen)),S.gen,t('allGen'),v=>S.lang==='en'?(GENS[v]||v):v);
+  const genN=tally(genBase,"gen");
+  fillSelect(selGen,byTally(genN),S.gen,`${t('allGen')} (${genBase.length})`,
+    v=>`${S.lang==='en'?(GENS[v]||v):v} (${genN.get(v)})`);
   const spBase=genBase.filter(i=>!S.gen||i.gen===S.gen);
   let spItems=uniq(spBase.map(i=>i.species));
   const spq=(S.spq||"").trim().toLowerCase();
@@ -356,7 +362,7 @@ function viewIndividual(){
   if(!S.ind) return `<div class="card panel"><h2>${t('tabIndividual')}</h2><div class="empty">${EN()?'Select an individual on the left.<br><span class="muted">Narrow by family / genus / species to find it faster.</span>':'請在左側選一個個體。<br><span class="muted">先用科/屬/物種縮小範圍會更好找。</span>'}</div></div>`;
   const i=D.individuals.find(x=>x.uid===S.ind);
   if(!i) return `<div class="card panel"><div class="empty">${EN()?"Individual not found.":"找不到個體。"}</div></div>`;
-  const phases=["leaf","flower","fruit"];
+  const phases=["flower","fruit","leaf"];
   const cell=26,padL=92,padT=24,W=padL+12*cell+10;
   let blocks="";
   phases.forEach((ph)=>{

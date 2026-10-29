@@ -50,7 +50,7 @@ Names are resolved against the **Catalogue of Life in Taiwan (TaiCoL)** — Taiw
 2. **Taxon yearly trend** — active span & peak per year; roll up species → genus → family.
 3. **Cross-species sequence** — individuals ordered by onset month (the seasonal relay).
 4. **Individual calendar** — month × year grid per plant, with taxonomy & conservation badges.
-5. **Taxonomy tree** — family → genus → species → individual for the current filters, expand/collapse per node.
+5. **Taxonomy tree** — family → genus → species → individual for the current filters; expand/collapse per node, click an individual to open its calendar.
 
 Bilingual **中 / EN** toggle (EN shows scientific names + Latin family/genus). Single self-contained HTML — data embedded, **works offline, no backend**.
 
@@ -97,7 +97,7 @@ Vanilla HTML / CSS / JS, hand-rolled SVG charts, no runtime dependencies. Brand 
 2. **分類年際趨勢** —— 各年活躍區間與盛期;可由物種上捲到屬、科。
 3. **跨物種季節序列** —— 個體依起始月排序的季節接力。
 4. **個體物候月曆** —— 每株的 月 × 年 格圖,附分類與保育徽章。
-5. **分類樹狀圖** —— 目前篩選範圍的 科 → 屬 → 物種 → 個體,可逐節點展開收合。
+5. **分類樹狀圖** —— 目前篩選範圍的 科 → 屬 → 物種 → 個體,可逐節點展開收合,點個體可開啟其物候月曆。
 
 提供 **中 / EN** 雙語切換(英文模式顯示學名與拉丁科屬)。單一自包含 HTML —— 資料內嵌、**可離線、無需後端**。
 

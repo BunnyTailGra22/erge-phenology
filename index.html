@@ -51,6 +51,9 @@ text{font-family:inherit}
 .statbar b{color:var(--ink);font-weight:600}
 .empty{color:var(--muted);padding:30px;text-align:center}
 .scroll{overflow-x:auto}
+g.treeind text.lbl{fill:var(--accent)}
+g.treeind:hover text.lbl{text-decoration:underline}
+g.treerow rect.hit{cursor:pointer}
 .note{font-size:12px;color:var(--muted);background:#f4f2ec;border-radius:8px;padding:8px 10px;margin-top:10px;white-space:pre-wrap}
 .badge{display:inline-block;font-size:12px;padding:2px 9px;border-radius:20px;margin-right:6px;font-weight:600}
 .badge.end{background:#e8efda;color:#3f5a1f}
@@ -136,11 +139,12 @@ const T={
  onlyEndemic:{zh:"只看臺灣特有種",en:"Taiwan endemics only"},
  retired:{zh:"已不再追蹤",en:"No longer tracked"},
  tabTree:{zh:"分類樹狀圖",en:"Taxonomy tree"},
- treeDesc:{zh:"目前篩選範圍內的 科 → 屬 → 物種 → 個體。點節點可展開或收合；括號為 物種數 · 個體數。",
-           en:"Family → genus → species → individual within the current filters. Click a node to expand or collapse; brackets show species · individuals."},
+ treeDesc:{zh:"目前篩選範圍內的 科 → 屬 → 物種 → 個體。點分類節點可展開或收合，點個體可開啟該株的物候月曆；括號為 物種數 · 個體數。",
+           en:"Family → genus → species → individual within the current filters. Click a taxon to expand or collapse, or an individual to open its calendar; brackets show species · individuals."},
  treeExpand:{zh:"全部展開",en:"Expand all"},
  treeCollapse:{zh:"全部收合",en:"Collapse all"},
  treeEmpty:{zh:"目前篩選範圍內沒有個體。",en:"No individuals in the current filters."},
+ treeOpenInd:{zh:"開啟個體物候月曆",en:"Open individual calendar"},
  treeTrunc:{zh:"節點過多，僅顯示前 {n} 列。請用左側篩選縮小範圍。",
             en:"Too many nodes; showing the first {n} rows. Narrow the scope with the filters on the left."},
  retiredNote:{zh:"此株已不在最新年度的掛牌名單中，僅保留歷史記錄。",en:"No longer on the latest year's tag list; historical records kept."},
@@ -519,24 +523,30 @@ function viewTree(){
 
   rows.forEach((r,ri)=>{
     const x=padL+r.d*indent,y=yOf(ri);
+    let row="";
     if(r.kids){
       // 可展開的節點：實心圓點＋三角指示
-      g+=`<circle cx="${x}" cy="${y}" r="3.5" fill="${css('--accent')}"/>`;
-      g+=txt(x-14,y+4,r.open?"\u25be":"\u25b8",{fill:css('--muted'),fs:11});
+      row+=`<circle cx="${x}" cy="${y}" r="3.5" fill="${css('--accent')}"/>`;
+      row+=txt(x-14,y+4,r.open?"\u25be":"\u25b8",{fill:css('--muted'),fs:11});
     }else{
-      g+=`<circle cx="${x}" cy="${y}" r="3.5" fill="#fff" stroke="${css('--accent2')}" stroke-width="1.5"/>`;
+      row+=`<circle cx="${x}" cy="${y}" r="3.5" fill="#fff" stroke="${css('--accent2')}" stroke-width="1.5"/>`;
     }
     const bold=r.d===0?600:(r.d===1?500:400);
     const italic=r.d===2&&r.sci?' font-style="italic"':'';
-    g+=`<text x="${x+labelX}" y="${y+4}" fill="${css('--ink')}" font-size="${r.d===0?13:12}" font-weight="${bold}"${italic}>${r.label}</text>`;
+    // 個體列的文字顏色由 g.treeind 的樣式接手，當成連結呈現。
+    const fill=r.kids?` fill="${css('--ink')}"`:'';
+    row+=`<text class="lbl" x="${x+labelX}" y="${y+4}"${fill} font-size="${r.d===0?13:12}" font-weight="${bold}"${italic}>${r.label}</text>`;
     const meta=r.kids
       ? (r.sp!==undefined?(EN()?`${r.sp} spp · ${r.n} ind`:`${r.sp} 種 · ${r.n} 株`)
                          :(EN()?`${r.n} ind`:`${r.n} 株`))
       : (r.ind&&r.ind.retired?t('retired'):"");
-    if(meta)g+=txt(W-14,y+4,meta,{a:"end",fill:css('--muted'),fs:11});
-    // 整列可點。傳的是列索引而非節點鍵：名稱裡若有引號或分隔字元，
-    // 內嵌成字串會把 onclick 弄壞。
-    if(r.kids)g+=`<rect x="0" y="${y-rowH/2}" width="${W}" height="${rowH}" fill="transparent" style="cursor:pointer" onclick="window._treeToggle(${ri})"><title>${r.label}</title></rect>`;
+    if(meta)row+=txt(W-14,y+4,meta,{a:"end",fill:css('--muted'),fs:11});
+    // 整列可點：分類節點展開／收合，個體列跳到個體物候月曆。
+    // 傳的是列索引而非節點鍵：名稱裡若有引號或分隔字元，內嵌成字串會把 onclick 弄壞。
+    const call=r.kids?`window._treeToggle(${ri})`:`window._treeGoInd(${ri})`;
+    const tip=r.kids?r.label:`${t('treeOpenInd')} — ${r.label}`;
+    row+=`<rect class="hit" x="0" y="${y-rowH/2}" width="${W}" height="${rowH}" fill="transparent" onclick="${call}"><title>${tip}</title></rect>`;
+    g+=`<g class="treerow ${r.kids?'treebranch':'treeind'}">${row}</g>`;
   });
   g+="</svg>";
 
@@ -545,6 +555,9 @@ function viewTree(){
 }
 window._treeToggle=ri=>{const r=TREE_ROWS[ri];if(!r)return;
   if(TREE_OPEN.has(r.k))TREE_OPEN.delete(r.k);else TREE_OPEN.add(r.k);render();};
+window._treeGoInd=ri=>{const r=TREE_ROWS[ri];if(!r||!r.ind)return;
+  S.ind=r.ind.uid;S.tab="individual";render();
+  document.getElementById("view").scrollIntoView({block:"start",behavior:"smooth"});};
 window._treeAll=on=>{
   TREE_OPEN.clear();
   if(on)treeRowsAllKeys(inScope()).forEach(k=>TREE_OPEN.add(k));

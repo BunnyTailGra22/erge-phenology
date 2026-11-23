@@ -58,6 +58,10 @@ def empty_obs():
     return {p: [None] * sheet_parse.MONTHS for p in PHASES}
 
 
+def empty_gone():
+    return [False] * sheet_parse.MONTHS
+
+
 def load_years(workbook_path, warn=None):
     """讀出所有年度分頁（分頁名為四位數年份者），依年份排序。
 
@@ -118,6 +122,8 @@ def build(workbook_path, cache_path, locked_path, online=False, asof=None):
             "alive": row.get("alive", True),
             "retired": False,
             "obs": {y: empty_obs() for y in years},
+            # 該月該株已不在（物候格的 X）；分母要把這些月份扣掉。
+            "gone": {y: empty_gone() for y in years},
             "obs_years": [],
         }
 
@@ -127,6 +133,7 @@ def build(workbook_path, cache_path, locked_path, online=False, asof=None):
     individuals = [make_individual(r, i) for i, r in enumerate(master, start=1)]
     for i in range(len(master)):
         individuals[i]["obs"][master_year] = master[i]["obs"]
+        individuals[i]["gone"][master_year] = master[i].get("gone", empty_gone())
 
     stats = {master_year: year_stats(master, individuals, master_year, [])}
     carried = []
@@ -136,6 +143,7 @@ def build(workbook_path, cache_path, locked_path, online=False, asof=None):
             registry, rows[y], locked=locked, fallback_log=fallback_log)
         for i, j in mapping.items():
             individuals[j]["obs"][y] = rows[y][i]["obs"]
+            individuals[j]["gone"][y] = rows[y][i].get("gone", empty_gone())
         still = []
         for i in unmatched:
             row = rows[y][i]
@@ -145,6 +153,7 @@ def build(workbook_path, cache_path, locked_path, online=False, asof=None):
             ind = make_individual(row, len(individuals) + 1)
             ind["retired"] = True
             ind["obs"][y] = row["obs"]
+            ind["gone"][y] = row.get("gone", empty_gone())
             individuals.append(ind)
             carried.append({"name": row["name"], "species": row["species"], "last_year": y})
             match.add_alias(alias, row["name"], row["species"])
@@ -187,6 +196,8 @@ def build(workbook_path, cache_path, locked_path, online=False, asof=None):
             "codebook": codebooks,
             "segments": segments,
             "survey_days": survey_days,
+            "n_gone_cells": sum(1 for i in individuals for y in years
+                                for g in i["gone"][y] if g),
             "n_alive": sum(1 for i in individuals if i["alive"]),
             "n_dead": sum(1 for i in individuals if not i["alive"]),
             "unreadable": len(unreadable),
@@ -302,7 +313,8 @@ def summarize(data, report, previous):
         delta = "" if was is None else (f"（{was} → {now}）" if was != now else "（無變動）")
         lines.append(f"  {year}: {now} 筆觀測值{delta}")
     lines.append(f"  路段 {len(report['segments'])} 段: {report['segments']}")
-    lines.append(f"  存活 {data['meta']['n_alive']} 株 / 已枯死 {data['meta']['n_dead']} 株")
+    lines.append(f"  存活 {data['meta']['n_alive']} 株 / 已枯死 {data['meta']['n_dead']} 株"
+                 f" / 標記『該月已不在』{data['meta']['n_gone_cells']} 個月格")
     lines.append(f"  各年踏查月數: {report['survey_months']}｜代號版本: {report['codebooks']}")
     if report["unreadable"]:
         tally = collections.Counter(w["text"] for w in report["unreadable"])

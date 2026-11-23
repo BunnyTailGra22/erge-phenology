@@ -19,14 +19,18 @@ MONTH_ROW = 4
 SURVEY_DAY_ROW = 5
 FIRST_DATA_ROW = 6
 _CJK = re.compile(r'[\u4e00-\u9fff]')
+# 踏查團隊 2026-11 決定：全形一律當半形處理。
+_FULLWIDTH = str.maketrans("０１２３４５６７８９ＸｘＲＬ？＊　", "0123456789XxRL?* ")
+# 物候格裡的 X＝「該月該株已不在」（踏查團隊 2026-11 決定），不是物候代號。
+_GONE_MARK = "X"
 _V2_HEADER = re.compile(r'0\s*空枝')
 
 
 def _s(v):
-    """儲存格轉字串，去頭尾空白；空值回傳空字串。"""
+    """儲存格轉字串，全形轉半形後去頭尾空白；空值回傳空字串。"""
     if v is None:
         return ""
-    return str(v).strip()
+    return str(v).translate(_FULLWIDTH).strip()
 
 
 def find_layout(ws):
@@ -74,11 +78,17 @@ def find_layout(ws):
 
 
 def parse_value(raw, warn=None, where=""):
-    """把儲存格值轉成 0/1/2/3；空白視為未觀測 (None)。
+    """把儲存格值轉成 0/1/2/3；空白回傳 None。
 
     0 只會出現在 2027 起的新代號（0 未開始 / 1 已終止）；舊分頁本來就沒有 0。
-    非空但讀不懂的儲存格（『1→2』的連續記法、『?』、『X』）仍然不納入資料，
-    但會記進 ``warn``——以前是靜默丟棄，看不出表上有多少格在流失。
+
+    注意空白的意思：踏查團隊 2026-11 決定，**該月有踏查時，空白代表
+    「調查過但沒有」**，不是「沒調查」。這裡仍回傳 None（表上確實沒有值），
+    由 build 與儀表板依當月是否有踏查日去解讀——分母因此是整個受監測族群，
+    而不是剛好有填那一格的少數幾株。
+
+    『X』在物候格代表該月該株已不在，由 ``parse_year`` 另外收走。
+    其餘非空卻讀不懂的（『1→2』、『?』）不納入資料，但會記進 ``warn``。
     """
     text = _s(raw)
     if not text:
@@ -139,10 +149,18 @@ def parse_year(ws, warn=None):
                 segment = head.replace("\n", " ")
             continue  # 區段標題列或空列
         obs = {}
+        gone = [False] * MONTHS
         for phase in PHASE_MARKS:
             start = layout[phase]
-            obs[phase] = [parse_value(ws.cell(r, start + i).value, warn,
-                                      f"{ws.title}!r{r}") for i in range(MONTHS)]
+            values = []
+            for i in range(MONTHS):
+                text = _s(ws.cell(r, start + i).value)
+                if text.upper() == _GONE_MARK:
+                    gone[i] = True          # 該月該株已不在
+                    values.append(None)
+                    continue
+                values.append(parse_value(text, warn, f"{ws.title}!r{r}"))
+            obs[phase] = values
         alive_raw = _s(ws.cell(r, layout["alive"]).value) if "alive" in layout else ""
         rows.append({
             "row": r,
@@ -153,7 +171,8 @@ def parse_year(ws, warn=None):
             "note": _s(ws.cell(r, layout["note"]).value),
             "segment": segment,
             # 『存』欄打 X 代表該株已枯死（偶有全形 Ｘ）；留白視為仍存活。
-            "alive": alive_raw.upper().replace("Ｘ", "X") != "X",
+            "alive": alive_raw.upper() != "X",
+            "gone": gone,
             "obs": obs,
         })
     return rows

@@ -14,6 +14,8 @@ index.html.
 """
 
 import argparse
+import collections
+import datetime as _dt
 import json
 import os
 import re
@@ -35,6 +37,13 @@ PHASE_LABELS = {
     "flower": ["無花/終花", "花芽/澎大", "優勢盛開"],
     "fruit": ["無果/掉落", "始熟", "正熟茂盛"],
 }
+# 2027 起的代號：把舊的 1 拆成 0（尚未開始）與 1（已終止），
+# 「結束」與「物候期長度」因此可以實測。v2 可無損退回 v1（0、1 併回 1）。
+PHASE_LABELS_V2 = {
+    "leaf": ["空枝(未展葉)", "落葉中", "嫩芽/新嫩葉", "老葉/成熟"],
+    "flower": ["無花", "終花", "花芽/澎大", "盛開"],
+    "fruit": ["無果", "掉落/散播", "始熟(未熟果)", "正熟"],
+}
 TAXONOMY_SOURCE = "TaiCoL 為主，iNaturalist 為輔"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -49,15 +58,22 @@ def empty_obs():
     return {p: [None] * sheet_parse.MONTHS for p in PHASES}
 
 
-def load_years(workbook_path):
-    """讀出所有年度分頁（分頁名為四位數年份者），依年份排序。"""
+def load_years(workbook_path, warn=None):
+    """讀出所有年度分頁（分頁名為四位數年份者），依年份排序。
+
+    同時取出每年的實際踏查日與代號版本：前者讓起始時間落在真正的日期上，
+    後者讓 2027 的新代號（含 0）被正確解讀。
+    """
     import openpyxl
 
     wb = openpyxl.load_workbook(workbook_path, data_only=True)
     tabs = sorted(ws.title for ws in wb.worksheets if YEAR_TAB.match(ws.title))
     if not tabs:
         raise SystemExit("找不到任何年度分頁（分頁名需為四位數年份）")
-    return tabs, {tab: sheet_parse.parse_year(wb[tab]) for tab in tabs}
+    rows = {tab: sheet_parse.parse_year(wb[tab], warn) for tab in tabs}
+    days = {tab: sheet_parse.survey_days(wb[tab]) for tab in tabs}
+    books = {tab: sheet_parse.codebook_of(wb[tab]) for tab in tabs}
+    return tabs, rows, days, books
 
 
 def year_stats(year_rows, individuals, year, unmatched):
@@ -72,8 +88,9 @@ def year_stats(year_rows, individuals, year, unmatched):
     }
 
 
-def build(workbook_path, cache_path, locked_path, online=False):
-    years, raw = load_years(workbook_path)
+def build(workbook_path, cache_path, locked_path, online=False, asof=None):
+    unreadable = []
+    years, raw, survey_days, codebooks = load_years(workbook_path, unreadable)
     master_year = years[-1]
 
     locked = []
@@ -97,6 +114,8 @@ def build(workbook_path, cache_path, locked_path, online=False):
             "form": row["form"],
             "side": row["side"],
             "note": row["note"],
+            "segment": row.get("segment", ""),
+            "alive": row.get("alive", True),
             "retired": False,
             "obs": {y: empty_obs() for y in years},
             "obs_years": [],
@@ -154,12 +173,25 @@ def build(workbook_path, cache_path, locked_path, online=False):
         notes.append(f"{len(fallback_log)} 筆同物種遞補")
     if carried:
         notes.append(f"{len(carried)} 株主檔已除名、保留歷史")
+    segments = []
+    for ind in individuals:
+        if ind["segment"] and ind["segment"] not in segments:
+            segments.append(ind["segment"])
     data = {
         "meta": {
             "years": years,
             "n_individuals": len(individuals),
             "master_year": master_year,
             "phases": PHASE_LABELS,
+            "phases2": PHASE_LABELS_V2,
+            "codebook": codebooks,
+            "segments": segments,
+            "survey_days": survey_days,
+            "n_alive": sum(1 for i in individuals if i["alive"]),
+            "n_dead": sum(1 for i in individuals if not i["alive"]),
+            "unreadable": len(unreadable),
+            "generated": _dt.date.today().isoformat(),
+            "asof": asof or _dt.date.today().isoformat(),
             "taxonomy_source": TAXONOMY_SOURCE,
             "corrections": "；".join(notes) if notes else "無",
         },
@@ -174,6 +206,12 @@ def build(workbook_path, cache_path, locked_path, online=False):
         "partial_name_matches": sorted({(a, b) for a, b, _ in partial_log}),
         "fallback_matches": fallback_log,
         "carried_over": carried,
+        "segments": segments,
+        "survey_months": {y: sum(1 for d in survey_days[y] if d) for y in years},
+        "codebooks": codebooks,
+        "zeros": {y: sum(1 for ind in individuals
+                         for p in ind["obs"][y].values() for v in p if v == 0) for y in years},
+        "unreadable": unreadable,
     }
     return data, report
 
@@ -206,6 +244,17 @@ def check(data, report, previous):
         problems.append("分類查不到：" + "、".join(report["taxonomy_missing"]))
     if not data["individuals"]:
         problems.append("沒有任何個體")
+    # 路段與踏查日是表上一直有的欄位；突然歸零代表版面被動過而不是資料變了。
+    if not report["segments"]:
+        problems.append("路段為 0 段：區段標題列沒解析到，路段篩選與調查覆蓋會失去這個維度")
+    blank_days = [y for y, n in report["survey_months"].items() if n == 0]
+    if blank_days:
+        problems.append(f"{'、'.join(blank_days)} 讀不到任何踏查日（第 5 列）")
+    # 舊代號不該出現 0；出現就是分頁改了代號卻沒改標題。
+    stray = {y: n for y, n in report["zeros"].items()
+             if n and report["codebooks"].get(y) != "v2"}
+    if stray:
+        problems.append(f"舊代號(v1)分頁出現 0 值：{stray}")
 
     if previous:
         for year in previous["meta"]["years"]:
@@ -219,6 +268,23 @@ def check(data, report, previous):
             if after < before * 0.9:
                 problems.append(f"{year} 觀測值由 {before} 掉到 {after}")
     return problems
+
+
+def changelog(data, report, previous):
+    """這次重建相對於上一版的差異，寫進 meta 讓『本月』頁可以直接顯示。"""
+    out = {"n": data["meta"]["n_individuals"], "prev_n": None, "delta_n": None,
+           "by_year": {}, "new_species": report["taxonomy_added"]}
+    if not previous:
+        return out
+    out["prev_n"] = previous["meta"]["n_individuals"]
+    out["delta_n"] = out["n"] - out["prev_n"]
+    for year in data["meta"]["years"]:
+        before = sum(1 for ind in previous["individuals"]
+                     for p in ind["obs"].get(year, {}).values() for v in p if v is not None)
+        after = report["years"][year]["values_assigned"]
+        if after != before:
+            out["by_year"][year] = after - before
+    return out
 
 
 def summarize(data, report, previous):
@@ -235,6 +301,14 @@ def summarize(data, report, previous):
         was = prev_counts.get(year)
         delta = "" if was is None else (f"（{was} → {now}）" if was != now else "（無變動）")
         lines.append(f"  {year}: {now} 筆觀測值{delta}")
+    lines.append(f"  路段 {len(report['segments'])} 段: {report['segments']}")
+    lines.append(f"  存活 {data['meta']['n_alive']} 株 / 已枯死 {data['meta']['n_dead']} 株")
+    lines.append(f"  各年踏查月數: {report['survey_months']}｜代號版本: {report['codebooks']}")
+    if report["unreadable"]:
+        tally = collections.Counter(w["text"] for w in report["unreadable"])
+        lines.append(f"  非空但讀不懂的儲存格 {len(report['unreadable'])} 格（未納入）: "
+                     f"{tally.most_common(6)}")
+        lines.append(f"    例如 {[w['at'] for w in report['unreadable'][:4]]}")
     for label, key in (("部分名稱比對", "partial_name_matches"),
                        ("同物種遞補", "fallback_matches"),
                        ("主檔除名保留", "carried_over"),
@@ -244,21 +318,35 @@ def summarize(data, report, previous):
     return "\n".join(lines)
 
 
-def read_existing(html_path):
-    """讀出 index.html 目前內嵌的資料，用來比對這次的變動。"""
-    try:
-        with open(html_path, encoding="utf-8") as fh:
-            html = fh.read()
-    except OSError:
-        return None
-    start = html.find(DATA_MARKER)
-    if start == -1:
-        return None
-    line = html[start + len(DATA_MARKER):html.index("\n", start)].rstrip().rstrip(";")
-    try:
-        return json.loads(line)
-    except json.JSONDecodeError:
-        return None
+def read_existing(html_path, json_path=None):
+    """讀出上一版資料，用來比對這次的變動。
+
+    以 index.html 內嵌的為準；改版面時那一行會暫時是模板佔位字串，這時退回
+    讀 phenology_data.json——否則換一次 template 就會白白失去把關的比較基準。
+    """
+    def from_html():
+        try:
+            with open(html_path, encoding="utf-8") as fh:
+                html = fh.read()
+        except OSError:
+            return None
+        start = html.find(DATA_MARKER)
+        if start == -1:
+            return None
+        line = html[start + len(DATA_MARKER):html.index("\n", start)].rstrip().rstrip(";")
+        try:
+            return json.loads(line)
+        except json.JSONDecodeError:
+            return None
+
+    data = from_html()
+    if data is None and json_path:
+        try:
+            with open(json_path, encoding="utf-8") as fh:
+                data = json.load(fh)
+        except (OSError, json.JSONDecodeError):
+            data = None
+    return data
 
 
 def main(argv=None):
@@ -271,10 +359,16 @@ def main(argv=None):
     ap.add_argument("--online", action="store_true",
                     help="允許向 TaiCoL 查詢快取沒有的物種")
     ap.add_argument("--check-only", action="store_true", help="只檢查，不寫檔")
+    ap.add_argument("--previous", default=None,
+                    help="比較基準的 json；預設讀 index.html 內嵌資料，讀不到時退回 --json")
+    ap.add_argument("--asof", default=None,
+                    help="來源 Sheet 的 modifiedTime (YYYY-MM-DD)，顯示為頁首的資料截止日")
     args = ap.parse_args(argv)
 
-    previous = read_existing(args.html)
-    data, report = build(args.workbook, args.cache, args.locked, online=args.online)
+    previous = read_existing(args.html, args.previous or args.json_out)
+    data, report = build(args.workbook, args.cache, args.locked,
+                         online=args.online, asof=args.asof)
+    data["meta"]["changelog"] = changelog(data, report, previous)
 
     print(summarize(data, report, previous))
     problems = check(data, report, previous)

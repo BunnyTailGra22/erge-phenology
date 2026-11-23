@@ -4,6 +4,10 @@ Parse the year tabs of the Mt. Erge phenology Google Sheet.
 
 分頁欄位配置跨年不同（2022–2023 與 2024– 的月份區塊起始欄不一樣），
 所以欄位一律由第 3 列的標題文字偵測，不寫死欄號。
+
+除了物候代號，這裡也取出三個原本被丟掉、但表上一直都有的維度：
+路段（無名稱、只有第 1 欄中文的區段標題列）、存活（『存』欄的 X）、
+以及第 5 列記的實際踏查日——起始時間的不確定區間要靠它才算得出來。
 """
 
 import re
@@ -12,7 +16,10 @@ MONTHS = 12
 PHASE_MARKS = {"leaf": "葉", "flower": "花", "fruit": "果"}
 HEADER_ROW = 3
 MONTH_ROW = 4
+SURVEY_DAY_ROW = 5
 FIRST_DATA_ROW = 6
+_CJK = re.compile(r'[\u4e00-\u9fff]')
+_V2_HEADER = re.compile(r'0\s*空枝')
 
 
 def _s(v):
@@ -66,30 +73,77 @@ def find_layout(ws):
     return layout
 
 
-def parse_value(raw):
-    """把儲存格值轉成 1/2/3；'?'、空白、其他文字視為未觀測 (None)。"""
+def parse_value(raw, warn=None, where=""):
+    """把儲存格值轉成 0/1/2/3；空白視為未觀測 (None)。
+
+    0 只會出現在 2027 起的新代號（0 未開始 / 1 已終止）；舊分頁本來就沒有 0。
+    非空但讀不懂的儲存格（『1→2』的連續記法、『?』、『X』）仍然不納入資料，
+    但會記進 ``warn``——以前是靜默丟棄，看不出表上有多少格在流失。
+    """
     text = _s(raw)
     if not text:
         return None
     try:
         num = int(round(float(text)))
     except ValueError:
+        if warn is not None:
+            warn.append({"at": where, "text": text[:16]})
         return None
-    return num if num in (1, 2, 3) else None
+    if num in (0, 1, 2, 3):
+        return num
+    if warn is not None:
+        warn.append({"at": where, "text": text[:16]})
+    return None
 
 
-def parse_year(ws):
-    """回傳該年度分頁的資料列（依步道行走順序）。"""
+def survey_days(ws):
+    """第 5 列記的『當月實際踏查日』，取 1–31 的整數，其餘為 None。
+
+    有了實際日期，物候起始就能落在真正的踏查日上，不確定區間＝夾住它的
+    前後兩次踏查間距，而不是籠統的半個月。
+    """
+    layout = find_layout(ws)
+    start = layout["leaf"]
+    out = []
+    for i in range(MONTHS):
+        text = _s(ws.cell(SURVEY_DAY_ROW, start + i).value)
+        try:
+            day = int(round(float(text)))
+        except ValueError:
+            day = None
+        out.append(day if day and 1 <= day <= 31 else None)
+    return out
+
+
+def codebook_of(ws):
+    """分頁採用的代號版本：葉標題寫出『0 空枝』就是 2027 起的 v2。"""
+    layout = find_layout(ws)
+    return "v2" if _V2_HEADER.search(_s(ws.cell(HEADER_ROW, layout["leaf"]).value)) else "v1"
+
+
+def parse_year(ws, warn=None):
+    """回傳該年度分頁的資料列（依步道行走順序）。
+
+    沿路的區段標題列（『火|蜀道>迎賓亭』等，只有第 1 欄有字）本身不是個體，
+    但會把路段帶給它底下的每一株——這是表上一直記著、卻從未進到儀表板的
+    空間維度。
+    """
     layout = find_layout(ws)
     rows = []
+    segment = ""
     for r in range(FIRST_DATA_ROW, ws.max_row + 1):
         name = _s(ws.cell(r, layout["name"]).value)
         if not name:
-            continue  # 區段標題列（只有第 1 欄）或空列
+            head = _s(ws.cell(r, layout["rid"]).value)
+            if len(head) >= 3 and _CJK.search(head):
+                segment = head.replace("\n", " ")
+            continue  # 區段標題列或空列
         obs = {}
         for phase in PHASE_MARKS:
             start = layout[phase]
-            obs[phase] = [parse_value(ws.cell(r, start + i).value) for i in range(MONTHS)]
+            obs[phase] = [parse_value(ws.cell(r, start + i).value, warn,
+                                      f"{ws.title}!r{r}") for i in range(MONTHS)]
+        alive_raw = _s(ws.cell(r, layout["alive"]).value) if "alive" in layout else ""
         rows.append({
             "row": r,
             "rid": _s(ws.cell(r, layout["rid"]).value),
@@ -97,6 +151,9 @@ def parse_year(ws):
             "form": _s(ws.cell(r, layout["form"]).value),
             "side": _s(ws.cell(r, layout["side"]).value),
             "note": _s(ws.cell(r, layout["note"]).value),
+            "segment": segment,
+            # 『存』欄打 X 代表該株已枯死（偶有全形 Ｘ）；留白視為仍存活。
+            "alive": alive_raw.upper().replace("Ｘ", "X") != "X",
             "obs": obs,
         })
     return rows

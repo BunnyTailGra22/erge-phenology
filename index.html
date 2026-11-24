@@ -294,8 +294,13 @@ function inScopeBase(){   // SCOPE tier only
     if(S.alive==="alive"&&i.alive===false)return false;
     return true;});
 }
+// 物種搜尋：比對中文物種名與學名（不分大小寫）。
+const spQuery=()=>SUBJ_OF("tax")?(S.spq||"").trim().toLowerCase():"";
+const spMatch=(x,q)=>!q||String(x||"").toLowerCase().includes(q)||String(SPS[x]||"").toLowerCase().includes(q);
 function inScope(){       // SCOPE + SUBJECT tiers
+  const q=spQuery();
   return inScopeBase().filter(i=>
+    spMatch(i.species,q)&&
     (!S.fam||i.fam===S.fam)&&(!S.gen||i.gen===S.gen)&&(!S.sp||i.species===S.sp)&&
     (!S.form||formKey(i.form)===S.form)&&(!S.endemic||i.endemic)&&consMatch(i,S.cons)&&
     (!S.only2||(i.obs_years||[]).length>=2));
@@ -373,6 +378,7 @@ function chipList(){
   if(S.fam&&SUBJ_OF("tax"))push("fam",t('lFam'),EN()?(FAMS[S.fam]||S.fam):S.fam);
   if(S.gen&&SUBJ_OF("tax"))push("gen",t('lGen'),EN()?(GENS[S.gen]||S.gen):S.gen);
   if(S.sp&&SUBJ_OF("tax"))push("sp",t('lSp'),spDisp(S.sp));
+  if(spQuery())push("spq",EN()?"Search":"搜尋",S.spq.trim());
   if(S.form&&SUBJ_OF("form"))push("form",t('lForm'),formLabel(S.form));
   if(S.cons&&SUBJ_OF("cons"))push("cons",t('lCons'),t({any:'consAny',iucn:'consIucn',redlist:'consRed',cites:'consCites',protected:'consProt',sensitive:'consSens'}[S.cons]||'consAll'));
   if(S.endemic&&SUBJ_OF("endemic"))push("endemic",t('lCons'),t('endemic'));
@@ -419,8 +425,8 @@ function subjectBar(){
     const gb=base.filter(i=>!S.fam||i.fam===S.fam);
     const genT=tally(gb,"gen"), gens=bySp(genT), genLab=g=>spLab(genT,g,GENS);
     const sb=gb.filter(i=>!S.gen||i.gen===S.gen); let sps=uniq(sb.map(i=>i.species));
-    const q=(S.spq||"").trim().toLowerCase();
-    if(q)sps=sps.filter(x=>x.toLowerCase().includes(q)||String(SPS[x]||"").toLowerCase().includes(q));
+    const q=spQuery();
+    if(q)sps=sps.filter(x=>spMatch(x,q));
     h+=`<label class="mini srch"><span>🔍</span><input id="fSpq" type="search" placeholder="${t('spSearch')}" value="${esc(S.spq)}"></label>`;
     h+=`<label class="mini"><span>${t('lFam')}</span><select id="fFam">${opt("",t('allFam')+" ("+fams.length+")",S.fam)+fams.map(f=>opt(f,famLab(f),S.fam)).join("")}</select></label>`;
     h+=`<label class="mini"><span>${t('lGen')}</span><select id="fGen">${opt("",t('allGen'),S.gen)+gens.map(g=>opt(g,genLab(g),S.gen)).join("")}</select></label>`;

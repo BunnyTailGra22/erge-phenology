@@ -22,16 +22,51 @@ python3 tools/build.py path/to/source.xlsx
 | 選項 | 用途 |
 |---|---|
 | `--check-only` | 只跑解析與把關，不寫任何檔案 |
+| `--force` | 資料與上一版相同時仍重寫（預設無變動就不寫檔） |
+| `--asof` | 指定資料截止日；預設為最近一次踏查日 |
 | `--online` | 允許向 TaiCoL 查詢快取沒有的物種（平常不需要） |
 | `--html` / `--json` / `--cache` / `--locked` | 改用其他路徑 |
 
 結束碼 `0` 代表這批資料可以發布，非 `0` 代表把關未通過、不應發布。
+
+## 每週自動更新 ｜ Weekly automation
+
+`.github/workflows/weekly-update.yml` 每週一 06:17（臺灣時間）自動執行：
+
+1. 下載 Google Sheet（`fetch_sheet.py`）
+2. 重建並把關（`build.py --online`；新物種會自動向 TaiCoL 查詢並寫入快取）
+3. **資料有變動才** commit 到 `main`，GitHub Pages 隨之更新；沒變動就什麼都不做
+4. 通知（GitHub issue，同一張持續更新，恢復後自動關閉）：
+   * `⚠️ 每週資料更新失敗`——下載不到、把關未通過等，附執行紀錄
+   * `⏰ 踏查資料超過 45 天未更新`——最近一次踏查日距今超過 45 天
+
+也可在 GitHub → Actions → 每週資料更新 → **Run workflow** 手動執行；
+勾選 `force` 會在資料沒變時仍重新注入（改了 `index.html` 版面後使用）。
+
+**資料截止日**＝最近一次踏查日（第 5 列），不是執行當天。
+
+### Sheet 存取（擇一）
+
+| 方式 | 設定 | 適用 |
+|---|---|---|
+| 公開連結（預設） | Sheet → 共用 → 「知道連結的任何人」→ 檢視者 | 最簡單；Sheet 內容任何拿到連結的人都看得到 |
+| 服務帳戶 | 在 Google Cloud 建服務帳戶並下載 JSON 金鑰 → 把服務帳戶 email 加為 Sheet 檢視者 → GitHub repo → Settings → Secrets and variables → Actions → 新增 secret `GOOGLE_SERVICE_ACCOUNT`（貼上整份 JSON） | Sheet 需保持不公開時 |
+
+有設 `GOOGLE_SERVICE_ACCOUNT` 就用服務帳戶，否則用公開連結。換 Sheet 時可設 repo variable `SHEET_ID`。
+
+### 通知會寄給誰
+
+開 issue 會通知 repo 的 watcher。請踏查團隊負責人在 repo 首頁按 **Watch → All Activity**（或 Custom → Issues）。
+
+> 公開 repo 若連續 60 天沒有任何 commit，GitHub 會自動停用排程。
+> 正常每月都有新資料就不會發生；超過 45 天沒新踏查時會先收到上面的提醒。
 
 ## 檔案 ｜ Files
 
 | 檔案 | 內容 |
 |---|---|
 | `build.py` | 主流程與發布前把關 |
+| `fetch_sheet.py` | 下載 Sheet 為 .xlsx（公開連結或服務帳戶） |
 | `sheet_parse.py` | 年度分頁解析（欄位由標題列偵測，不寫死欄號） |
 | `match.py` | 跨年個體比對 |
 | `taxonomy.py` | 分類與保育狀態（快取優先，TaiCoL 為後援） |

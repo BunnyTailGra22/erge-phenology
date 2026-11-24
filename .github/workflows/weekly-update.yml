@@ -1,0 +1,142 @@
+# 每週從 Google Sheet 重建儀表板資料；有變動才 commit 到 main（GitHub Pages 隨之更新）。
+# 把關未通過、下載失敗、或踏查資料太久沒更新時，開一張 issue 通知（同一張會持續更新，
+# 恢復正常後自動關閉），不再像以前停更 4 個月都沒人發現。
+name: 每週資料更新
+
+on:
+  schedule:
+    # 每週一 06:17（臺灣時間）＝ 週日 22:17 UTC
+    - cron: "17 22 * * 0"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "資料沒變也重寫（改了版面後重新注入時用）"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  issues: write
+  pages: write
+
+concurrency:
+  group: weekly-update
+  cancel-in-progress: false
+
+env:
+  ALERT_TITLE: "⚠️ 每週資料更新失敗"
+  STALE_TITLE: "⏰ 踏查資料超過 45 天未更新"
+  STALE_DAYS: "45"
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 安裝套件
+        env:
+          GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+        run: |
+          python3 -m pip install --quiet openpyxl==3.1.5
+          if [ -n "$GOOGLE_SERVICE_ACCOUNT" ]; then
+            python3 -m pip install --quiet google-auth==2.35.0 requests==2.32.3
+          fi
+
+      - name: 下載 Google Sheet
+        env:
+          GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+          SHEET_ID: ${{ vars.SHEET_ID }}
+        run: |
+          set -o pipefail
+          python3 tools/fetch_sheet.py "$RUNNER_TEMP/source.xlsx" 2>&1 | tee "$RUNNER_TEMP/log.txt"
+
+      - name: 重建資料（含發布前把關）
+        run: |
+          set -o pipefail
+          FORCE=""
+          if [ "${{ inputs.force }}" = "true" ]; then FORCE="--force"; fi
+          python3 tools/build.py "$RUNNER_TEMP/source.xlsx" --online $FORCE 2>&1 | tee -a "$RUNNER_TEMP/log.txt"
+
+      - name: 有變動才 commit 並推上 main
+        id: commit
+        run: |
+          if git diff --quiet; then
+            echo "資料無變動，不 commit。"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          ASOF=$(python3 -c "import json;print(json.load(open('phenology_data.json'))['meta']['asof'])")
+          git add phenology_data.json index.html tools/taxonomy_cache.json
+          git commit -m "每週資料更新：資料截止 ${ASOF}" -m "由排程從 Google Sheet 重建（.github/workflows/weekly-update.yml）。"
+          git push origin HEAD:main
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: 觸發 GitHub Pages 重建
+        if: steps.commit.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # 用 GITHUB_TOKEN 推的 commit 不一定會觸發 Pages；明確要求一次，失敗不影響結果。
+        run: gh api -X POST "repos/${{ github.repository }}/pages/builds" || echo "Pages 重建請求未成功（可能已自動觸發）"
+
+      - name: 檢查踏查資料是否太久沒更新
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          DAYS=$(python3 - <<'EOF'
+          import json, datetime
+          asof = json.load(open("phenology_data.json"))["meta"]["asof"]
+          print((datetime.date.today() - datetime.date.fromisoformat(asof)).days)
+          EOF
+          )
+          ASOF=$(python3 -c "import json;print(json.load(open('phenology_data.json'))['meta']['asof'])")
+          OPEN=$(gh issue list --state open --search "in:title \"$STALE_TITLE\"" --json number --jq '.[0].number // empty')
+          if [ "$DAYS" -gt "$STALE_DAYS" ]; then
+            BODY="最近一次踏查日是 **${ASOF}**，距今 ${DAYS} 天（門檻 ${STALE_DAYS} 天）。
+
+          請確認：這個月的踏查是否已完成、紙本是否已補登進 Google Sheet、第 5 列的踏查日是否有填。
+
+          排程執行紀錄：${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            if [ -n "$OPEN" ]; then gh issue comment "$OPEN" --body "$BODY"
+            else gh issue create --title "$STALE_TITLE" --body "$BODY"; fi
+          elif [ -n "$OPEN" ]; then
+            gh issue close "$OPEN" --comment "已恢復：最近一次踏查日 ${ASOF}。"
+          fi
+
+      - name: 更新成功，關閉先前的失敗通知
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          OPEN=$(gh issue list --state open --search "in:title \"$ALERT_TITLE\"" --json number --jq '.[0].number // empty')
+          if [ -n "$OPEN" ]; then
+            gh issue close "$OPEN" --comment "已恢復：${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          fi
+
+      - name: 失敗時開 issue 通知
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "排程更新失敗，網站維持上一版資料。"
+            echo
+            echo "執行紀錄：${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo
+            echo '```'
+            tail -n 60 "$RUNNER_TEMP/log.txt" 2>/dev/null || echo "（沒有輸出）"
+            echo '```'
+            echo
+            echo "常見原因：Sheet 權限（下載不到 .xlsx）、分頁或標題列被改動、出現查不到分類的新物種、已完成年度的觀測值大量減少。"
+          } > "$RUNNER_TEMP/issue.md"
+          OPEN=$(gh issue list --state open --search "in:title \"$ALERT_TITLE\"" --json number --jq '.[0].number // empty')
+          if [ -n "$OPEN" ]; then gh issue comment "$OPEN" --body-file "$RUNNER_TEMP/issue.md"
+          else gh issue create --title "$ALERT_TITLE" --body-file "$RUNNER_TEMP/issue.md"; fi

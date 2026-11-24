@@ -549,7 +549,7 @@ function viewNow(){
   const cov=SURVEYED[y].filter(Boolean).length;
   const pct=(a,b)=>b?Math.round(100*a/b):0;
   const ins=`<div class="ins">
-    <div class="ic"><div class="k">${EN()?"THIS MONTH":"本月變動"}</div>
+    <div class="ic"><div class="k">${EN()?"LATEST UPDATE":"最近更新"}${cl.since?` <span style="font-weight:400">· ${EN()?"vs":"與"} ${esc(cl.since)} ${EN()?"version":"版相比"}</span>`:""}</div>
       <div class="v">${(cl.prev_n!=null&&!cl.cleanup)?`${EN()?"Individuals":"個體"} ${cl.prev_n} → <b>${cl.n}</b>`:`<b>${M.n_individuals}</b> ${EN()?"individuals":"株個體"}`}</div>
       <div class="m">${Object.keys(cl.by_year||{}).length?`${EN()?"new values":"新增物候值"} `+Object.entries(cl.by_year).map(([k,v])=>`${k} ${v>0?"+":""}${v}`).join(" · "):(EN()?"no change since last refresh":"與上次重建無差異")}${(cl.new_species||[]).length?` · ${EN()?"new species":"新物種"} ${cl.new_species.length}`:""}</div>
       ${cl.cleanup?`<div class="m">${EN()?`Data tidy-up: ${cl.cleanup.n} individuals removed from unmonitored segments (${cl.cleanup.segments.join(", ")}); not a field change.`:`資料整理：移除未定期踏查路段（${cl.cleanup.segments.join("、")}）${cl.cleanup.n} 株，非現地變化。`}</div>`:""}</div>

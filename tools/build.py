@@ -72,6 +72,31 @@ def drop_unmonitored(individuals):
     return keep, dropped, flagged
 
 
+def last_survey_date(years, survey_days):
+    """最近一次有記錄踏查日的日期（YYYY-MM-DD）；沒有就回傳 None。"""
+    for y in reversed(years):
+        days = survey_days.get(y) or []
+        for m in range(len(days) - 1, -1, -1):
+            if days[m]:
+                return f"{y}-{m + 1:02d}-{int(days[m]):02d}"
+    return None
+
+
+# 每週排程會重跑；資料沒變時不應該產生新版本，否則每週都多一個只改了
+# 「重建日期」的 commit，「本月變動」卡也會被洗成「無差異」。
+VOLATILE_META = ("generated", "changelog")
+
+
+def same_content(data, previous):
+    if not previous:
+        return False
+    def strip(d):
+        meta = {k: v for k, v in d["meta"].items() if k not in VOLATILE_META}
+        return json.dumps({"meta": meta, "individuals": d["individuals"]},
+                          ensure_ascii=False, sort_keys=True)
+    return strip(data) == strip(previous)
+
+
 def recount_meta(meta, individuals, years):
     """個體增減後，重算 meta 裡跟個體數有關的欄位。"""
     segments = []
@@ -235,7 +260,7 @@ def build(workbook_path, cache_path, locked_path, online=False, asof=None):
         "survey_days": survey_days,
         "unreadable": len(unreadable),
         "generated": _dt.date.today().isoformat(),
-        "asof": asof or _dt.date.today().isoformat(),
+        "asof": asof or last_survey_date(years, survey_days) or _dt.date.today().isoformat(),
         "taxonomy_source": TAXONOMY_SOURCE,
         "corrections": "；".join(notes) if notes else "無",
     }
@@ -325,6 +350,7 @@ def changelog(data, report, previous):
            "by_year": {}, "new_species": report["taxonomy_added"]}
     if not previous:
         return out
+    out["since"] = previous["meta"].get("asof") or previous["meta"].get("generated")
     out["prev_n"] = previous["meta"]["n_individuals"]
     out["delta_n"] = out["n"] - out["prev_n"]
     # 上一版還含有未定期踏查路段的個體、這次被排除時，株數變化是資料整理，
@@ -419,6 +445,8 @@ def main(argv=None):
     ap.add_argument("--online", action="store_true",
                     help="允許向 TaiCoL 查詢快取沒有的物種")
     ap.add_argument("--check-only", action="store_true", help="只檢查，不寫檔")
+    ap.add_argument("--force", action="store_true",
+                    help="資料與上一版相同時仍重寫（例如改了版面要重新注入）")
     ap.add_argument("--previous", default=None,
                     help="比較基準的 json；預設讀 index.html 內嵌資料，讀不到時退回 --json")
     ap.add_argument("--asof", default=None,
@@ -432,6 +460,7 @@ def main(argv=None):
 
     print(summarize(data, report, previous))
     problems = check(data, report, previous)
+    unchanged = same_content(data, previous)
     if problems:
         print("\n把關未通過，這批資料不發布：", file=sys.stderr)
         for p in problems:
@@ -440,6 +469,10 @@ def main(argv=None):
 
     if args.check_only:
         print("\n--check-only：未寫入任何檔案")
+        return 0
+
+    if unchanged and not args.force:
+        print("\n資料與上一版相同，不寫檔（--force 可強制重寫）")
         return 0
 
     with open(args.json_out, "w", encoding="utf-8") as fh:

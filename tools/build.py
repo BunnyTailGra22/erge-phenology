@@ -327,6 +327,15 @@ def changelog(data, report, previous):
         return out
     out["prev_n"] = previous["meta"]["n_individuals"]
     out["delta_n"] = out["n"] - out["prev_n"]
+    # 上一版還含有未定期踏查路段的個體、這次被排除時，株數變化是資料整理，
+    # 不是現地增減；註明讓「本月」卡片不把它當成新紀錄或死亡。
+    gone_unmon = [i for i in previous["individuals"]
+                  if _seg_key(i.get("segment")) in UNMONITORED_SEGMENTS
+                  and not i.get("obs_years")]
+    if gone_unmon:
+        out["cleanup"] = {"n": len(gone_unmon),
+                          "segments": [s for s in UNMONITORED_SEGMENTS
+                                       if any(_seg_key(i.get("segment")) == s for i in gone_unmon)]}
     for year in data["meta"]["years"]:
         before = sum(1 for ind in previous["individuals"]
                      for p in ind["obs"].get(year, {}).values() for v in p if v is not None)

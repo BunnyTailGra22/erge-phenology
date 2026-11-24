@@ -144,7 +144,15 @@
    "by_year": {
     "2026": 107
    },
-   "new_species": []
+   "new_species": [],
+   "cleanup": {
+    "n": 57,
+    "segments": [
+     "羊腸小徑",
+     "天梯",
+     "土之道"
+    ]
+   }
   }
  },
  "individuals": [

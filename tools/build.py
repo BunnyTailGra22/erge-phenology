@@ -45,6 +45,48 @@ PHASE_LABELS_V2 = {
     "fruit": ["無果", "掉落/散播", "始熟(未熟果)", "正熟"],
 }
 TAXONOMY_SOURCE = "TaiCoL 為主，iNaturalist 為輔"
+# 表上有這幾段的區段標題與個體列，但從未定期踏查（踏查團隊 2026-11 確認），
+# 不列入路段，也不列入個體。比對時忽略標題尾端的問號（例：「天梯?」）。
+UNMONITORED_SEGMENTS = ("羊腸小徑", "天梯", "土之道")
+
+
+def _seg_key(seg):
+    return (seg or "").strip().rstrip("?？").strip()
+
+
+def drop_unmonitored(individuals):
+    """移除未定期踏查路段的個體；回傳 (保留的, 移除的, 有觀測值而保留的)。
+
+    這些路段的個體若哪天出現觀測值，就不再是「沒有定期紀錄」，保留下來並在
+    把關時列出，交給人判斷，不默默丟掉資料。
+    """
+    keep, dropped, flagged = [], [], []
+    for ind in individuals:
+        if _seg_key(ind.get("segment")) not in UNMONITORED_SEGMENTS:
+            keep.append(ind)
+        elif ind.get("obs_years"):
+            keep.append(ind)
+            flagged.append(ind)
+        else:
+            dropped.append(ind)
+    return keep, dropped, flagged
+
+
+def recount_meta(meta, individuals, years):
+    """個體增減後，重算 meta 裡跟個體數有關的欄位。"""
+    segments = []
+    for ind in individuals:
+        if ind["segment"] and ind["segment"] not in segments:
+            segments.append(ind["segment"])
+    meta.update({
+        "n_individuals": len(individuals),
+        "segments": segments,
+        "n_gone_cells": sum(1 for i in individuals for y in years
+                            for g in i["gone"][y] if g),
+        "n_alive": sum(1 for i in individuals if i["alive"]),
+        "n_dead": sum(1 for i in individuals if not i["alive"]),
+    })
+    return segments
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -166,6 +208,8 @@ def build(workbook_path, cache_path, locked_path, online=False, asof=None):
     for ind in individuals:
         ind["obs_years"] = [y for y in years
                             if any(v is not None for p in ind["obs"][y].values() for v in p)]
+    # uid 在過濾前就編好，移除後不重編，分享連結裡的個體編號才不會變。
+    individuals, unmonitored, unmonitored_with_data = drop_unmonitored(individuals)
 
     cache = taxonomy.load_cache(cache_path)
     species = sorted({ind["species"] for ind in individuals})
@@ -182,32 +226,21 @@ def build(workbook_path, cache_path, locked_path, online=False, asof=None):
         notes.append(f"{len(fallback_log)} 筆同物種遞補")
     if carried:
         notes.append(f"{len(carried)} 株主檔已除名、保留歷史")
-    segments = []
-    for ind in individuals:
-        if ind["segment"] and ind["segment"] not in segments:
-            segments.append(ind["segment"])
-    data = {
-        "meta": {
-            "years": years,
-            "n_individuals": len(individuals),
-            "master_year": master_year,
-            "phases": PHASE_LABELS,
-            "phases2": PHASE_LABELS_V2,
-            "codebook": codebooks,
-            "segments": segments,
-            "survey_days": survey_days,
-            "n_gone_cells": sum(1 for i in individuals for y in years
-                                for g in i["gone"][y] if g),
-            "n_alive": sum(1 for i in individuals if i["alive"]),
-            "n_dead": sum(1 for i in individuals if not i["alive"]),
-            "unreadable": len(unreadable),
-            "generated": _dt.date.today().isoformat(),
-            "asof": asof or _dt.date.today().isoformat(),
-            "taxonomy_source": TAXONOMY_SOURCE,
-            "corrections": "；".join(notes) if notes else "無",
-        },
-        "individuals": individuals,
+    meta = {
+        "years": years,
+        "master_year": master_year,
+        "phases": PHASE_LABELS,
+        "phases2": PHASE_LABELS_V2,
+        "codebook": codebooks,
+        "survey_days": survey_days,
+        "unreadable": len(unreadable),
+        "generated": _dt.date.today().isoformat(),
+        "asof": asof or _dt.date.today().isoformat(),
+        "taxonomy_source": TAXONOMY_SOURCE,
+        "corrections": "；".join(notes) if notes else "無",
     }
+    segments = recount_meta(meta, individuals, years)
+    data = {"meta": meta, "individuals": individuals}
     report = {
         "master_year": master_year,
         "years": stats,
@@ -218,6 +251,8 @@ def build(workbook_path, cache_path, locked_path, online=False, asof=None):
         "fallback_matches": fallback_log,
         "carried_over": carried,
         "segments": segments,
+        "unmonitored_dropped": len(unmonitored),
+        "unmonitored_with_data": [(i["uid"], i["name"], i["segment"]) for i in unmonitored_with_data],
         "survey_months": {y: sum(1 for d in survey_days[y] if d) for y in years},
         "codebooks": codebooks,
         "zeros": {y: sum(1 for ind in individuals
@@ -258,6 +293,9 @@ def check(data, report, previous):
     # 路段與踏查日是表上一直有的欄位；突然歸零代表版面被動過而不是資料變了。
     if not report["segments"]:
         problems.append("路段為 0 段：區段標題列沒解析到，路段篩選與調查覆蓋會失去這個維度")
+    if report.get("unmonitored_with_data"):
+        problems.append("未定期踏查路段出現觀測值（已保留，請確認是否改為定期路段）："
+                        + "、".join(f"{u} {n}（{s}）" for u, n, s in report["unmonitored_with_data"][:5]))
     blank_days = [y for y, n in report["survey_months"].items() if n == 0]
     if blank_days:
         problems.append(f"{'、'.join(blank_days)} 讀不到任何踏查日（第 5 列）")
@@ -313,6 +351,7 @@ def summarize(data, report, previous):
         delta = "" if was is None else (f"（{was} → {now}）" if was != now else "（無變動）")
         lines.append(f"  {year}: {now} 筆觀測值{delta}")
     lines.append(f"  路段 {len(report['segments'])} 段: {report['segments']}")
+    lines.append(f"  未定期踏查路段移除 {report.get('unmonitored_dropped', 0)} 株: {list(UNMONITORED_SEGMENTS)}")
     lines.append(f"  存活 {data['meta']['n_alive']} 株 / 已枯死 {data['meta']['n_dead']} 株"
                  f" / 標記『該月已不在』{data['meta']['n_gone_cells']} 個月格")
     lines.append(f"  各年踏查月數: {report['survey_months']}｜代號版本: {report['codebooks']}")

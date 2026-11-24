@@ -25,7 +25,7 @@ flowchart TD
   F --> H["Google Drive"]
 ```
 
-Data scale: 193 tagged individuals · 5 years · 133 species · 59 families · 24 Taiwan endemics.
+Data scale: 136 tagged individuals · 5 years · 88 species · 45 families · 14 Taiwan endemics.
 
 ---
 
@@ -90,7 +90,7 @@ Vanilla HTML / CSS / JS, hand-rolled SVG charts, no runtime dependencies. Brand 
 編號跨年不穩定(空白、重複、重新編號)。以**複合鍵**(正規化物種名 + 形相 + 步道左右 + 踏查順序)跨年比對,並以最新年度為主檔。最新年度已除名、但往年留有觀測值的個體會保留下來(標記「已不再追蹤」),歷史不會隨除名消失。自動命中約 97–99%,別名直接從主檔名稱欄學,剩下真的修不好的可寫進 `tools/locked_matches.json` 鎖定。
 
 ### 分類
-以 **臺灣物種名錄(TaiCoL)** 解析:臺灣接受學名、科與屬(中文 + 拉丁)、特有性、IUCN / 國家紅皮書狀態;**iNaturalist** 為後備。資料含 25 種臺灣特有種,以及保育標記(含 1 種極危 CR)。
+以 **臺灣物種名錄(TaiCoL)** 解析:臺灣接受學名、科與屬(中文 + 拉丁)、特有性、IUCN / 國家紅皮書狀態;**iNaturalist** 為後備。資料含 14 種臺灣特有種,以及保育標記(含 1 種極危 CR)。
 
 ### 儀表板 —— 五個視圖
 1. **群落物候曲線** —— 各月達某物候相的個體比例,5 年疊圖。

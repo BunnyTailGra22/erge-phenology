@@ -84,7 +84,7 @@ Vanilla HTML / CSS / JS, hand-rolled SVG charts, no runtime dependencies. Brand 
 - **iNaturalist project**: https://www.inaturalist.org/projects/erge-mountain-trail
 
 ### Status & license
-**Beta.** Data © the survey team. For reuse, attribution is requested (e.g. CC BY-NC 4.0); please contact the team.
+**Beta.** Data © the survey team, licensed under [**CC BY-NC 4.0**](https://creativecommons.org/licenses/by-nc/4.0/) — reuse with attribution, non-commercial only. For commercial use, please contact the team.
 
 ---
 
@@ -143,4 +143,4 @@ python3 tools/build.py path/to/source.xlsx
 - **iNaturalist 專案**:https://www.inaturalist.org/projects/erge-mountain-trail
 
 ### 狀態與授權
-**Beta 版。** 資料著作權屬踏查團隊。如需引用,請標註出處(例如 CC BY-NC 4.0),並與團隊聯繫。
+**Beta 版。** 資料著作權屬踏查團隊,以 [**CC BY-NC 4.0**](https://creativecommons.org/licenses/by-nc/4.0/deed.zh-hant)(姓名標示—非商業性)授權:標示出處即可再利用,限非商業用途。商業用途請與團隊聯繫。

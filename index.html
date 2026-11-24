@@ -82,7 +82,6 @@ main{padding:10px 24px 24px}
 .mini span{color:var(--muted);font-size:11px}
 .mini select{border:0;background:transparent;font-size:12px;max-width:170px;cursor:pointer}
 .mini input{border:0;background:transparent;font-size:12px;width:120px;outline:none}
-.mini.srch input{width:220px}
 .pseg{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
 .pseg button{border:0;background:#fff;padding:4px 11px;font-size:12px;cursor:pointer}
 .pseg button.on{background:var(--brand-red);color:#fff;font-weight:600}
@@ -427,7 +426,7 @@ function subjectBar(){
     const sb=gb.filter(i=>!S.gen||i.gen===S.gen); let sps=uniq(sb.map(i=>i.species));
     const q=spQuery();
     if(q)sps=sps.filter(x=>spMatch(x,q));
-    h+=`<label class="mini srch"><span>🔍</span><input id="fSpq" type="search" placeholder="${t('spSearch')}" value="${esc(S.spq)}"></label>`;
+    h+=`<label class="mini"><span>🔍</span><input id="fSpq" type="search" placeholder="${t('spSearch')}" value="${esc(S.spq)}"></label>`;
     h+=`<label class="mini"><span>${t('lFam')}</span><select id="fFam">${opt("",t('allFam')+" ("+fams.length+")",S.fam)+fams.map(f=>opt(f,famLab(f),S.fam)).join("")}</select></label>`;
     h+=`<label class="mini"><span>${t('lGen')}</span><select id="fGen">${opt("",t('allGen'),S.gen)+gens.map(g=>opt(g,genLab(g),S.gen)).join("")}</select></label>`;
     h+=`<label class="mini"><span>${t('lSp')}</span><select id="fSp">${opt("",t('allSp')+(q?` (${sps.length})`:""),S.sp)+sps.map(x=>opt(x,spDisp(x),S.sp)).join("")}</select></label>`;
@@ -866,9 +865,9 @@ function viewIndividual(){
 // ===================== VIEW: 方法與代號 =====================
 function viewMethods(){
   const cb=M.codebook||{}, v2y=Object.keys(cb).filter(y=>cb[y]==="v2");
-  const sw=(c,dash)=>`<span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:${c};border:1px ${dash?"dashed":"solid"} rgba(0,0,0,.18);vertical-align:-2px;margin-right:6px"></span>`;
-  const rowV1=(ph,cols)=>`<tr><td><b>${phName(ph)}</b></td>`+[0,1,2].map(k=>`<td>${sw(css(cols[k]))}${k+1} ${M.phases[ph][k]}</td>`).join("")+`<td class="muted">—</td></tr>`;
-  const rowV2=(ph,labs,cols)=>`<tr><td><b>${phName(ph)}</b></td>`+labs.map((l,k)=>`<td>${sw(cols[k],k===0)}${k} ${l}</td>`).join("")+`</tr>`;
+  const sw=(c,dash)=>`<span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:${c};border:${dash?"1.5px dashed rgba(0,0,0,.55)":"1px solid rgba(0,0,0,.18)"};vertical-align:-2px;margin-right:6px"></span>`;
+  const rowV1=(ph,cols)=>`<tr><td><b>${phName(ph)}</b></td>`+[0,1,2].map(k=>`<td>${sw(css(cols[k]),k===0)}${k+1} ${M.phases[ph][k]}</td>`).join("")+`<td class="muted">—</td></tr>`;
+  const rowV2=(ph,labs,cols)=>`<tr><td><b>${phName(ph)}</b></td>`+labs.map((l,k)=>`<td>${sw(cols[k],k<=1)}${k} ${l}</td>`).join("")+`</tr>`;
   const V2C={leaf:["#f0ede2","#c9a227","#90b821","#587a30"],flower:["#f6efeb","#b98a7a","#f0987c","#e8380d"],fruit:["#f7f2e4","#a8854a","#ffd900","#cf9a00"]};
   const cross=[["葉 空枝","Breaking leaf buds = no; Leaves = no","no leaf present (dormant)"],
     ["葉 落葉中","Falling leaves = yes","senescing leaf present"],

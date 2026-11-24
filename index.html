@@ -82,6 +82,7 @@ main{padding:10px 24px 24px}
 .mini span{color:var(--muted);font-size:11px}
 .mini select{border:0;background:transparent;font-size:12px;max-width:170px;cursor:pointer}
 .mini input{border:0;background:transparent;font-size:12px;width:120px;outline:none}
+.mini.srch input{width:220px}
 .pseg{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
 .pseg button{border:0;background:#fff;padding:4px 11px;font-size:12px;cursor:pointer}
 .pseg button.on{background:var(--brand-red);color:#fff;font-weight:600}
@@ -322,7 +323,7 @@ const VIEWS={
  taxon:    {g:"gAna", lab:"vTax", nb:0, subj:["phase","tax","form","cons","endemic"],    disp:["thr"]},
  sequence: {g:"gAna", lab:"vSeq", nb:0, subj:["phase","tax","form","cons","endemic"],    disp:["thr","seqYear"]},
  overlap:  {g:"gAna", lab:"vOvl", nb:1, subj:["phase","tax","form","cons"],              disp:["thr","seqYear"]},
- tree:     {g:"gAna", lab:"tabTree", nb:0, subj:["tax","form","cons","endemic"],         disp:[]},
+ tree:     {g:"gRef", lab:"tabTree", nb:0, subj:["tax","form","cons","endemic"],         disp:[]},
  methods:  {g:"gRef", lab:"vMet", nb:1, subj:[],                                         disp:[]}
 };
 const SUBJ_OF=k=>(VIEWS[S.tab].subj||[]).includes(k);
@@ -406,16 +407,28 @@ function subjectBar(){
   let h=`<span class="tier t2">${t('subject')} SUBJECT</span>`;
   if(SUBJ_OF("phase"))h+=`<span class="pseg" id="phSeg">`+["leaf","flower","fruit"].map(p=>`<button data-p="${p}" class="${S.phase===p?'on':''}">${phName(p)}</button>`).join("")+`</span>`;
   const base=inScopeBase();
+  // 排列順序：搜尋物種 → 科 → 屬 → 種 → 個體 → 形相 → 保育 → 特有。
   if(SUBJ_OF("tax")){
-    const fams=uniq(base.map(i=>i.fam));
-    h+=`<label class="mini"><span>${t('lFam')}</span><select id="fFam">${opt("",t('allFam')+" ("+fams.length+")",S.fam)+fams.map(f=>opt(f,EN()?(FAMS[f]||f):f,S.fam)).join("")}</select></label>`;
-    const gb=base.filter(i=>!S.fam||i.fam===S.fam), gens=uniq(gb.map(i=>i.gen));
-    h+=`<label class="mini"><span>${t('lGen')}</span><select id="fGen">${opt("",t('allGen'),S.gen)+gens.map(g=>opt(g,EN()?(GENS[g]||g):g,S.gen)).join("")}</select></label>`;
+    // 科、屬選單依物種數降冪排序，同數比個體數，再按名稱；選項標「n 種」。
+    const tally=(inds,key)=>{const m=new Map();
+      inds.forEach(i=>{const k=i[key];if(!k)return;let e=m.get(k);if(!e){e={n:0,sp:new Set()};m.set(k,e);}e.n++;if(i.species)e.sp.add(i.species);});
+      return m;};
+    const bySp=m=>[...m.keys()].sort((a,b)=>m.get(b).sp.size-m.get(a).sp.size||m.get(b).n-m.get(a).n||a.localeCompare(b,"zh-Hant"));
+    const spLab=(m,k,en)=>{const e=m.get(k);return (EN()?(en[k]||k):k)+(EN()?` (${e.sp.size} ${e.sp.size===1?"sp":"spp"})`:`（${e.sp.size} 種）`);};
+    const famT=tally(base,"fam"), fams=bySp(famT), famLab=f=>spLab(famT,f,FAMS);
+    const gb=base.filter(i=>!S.fam||i.fam===S.fam);
+    const genT=tally(gb,"gen"), gens=bySp(genT), genLab=g=>spLab(genT,g,GENS);
     const sb=gb.filter(i=>!S.gen||i.gen===S.gen); let sps=uniq(sb.map(i=>i.species));
     const q=(S.spq||"").trim().toLowerCase();
     if(q)sps=sps.filter(x=>x.toLowerCase().includes(q)||String(SPS[x]||"").toLowerCase().includes(q));
-    h+=`<label class="mini"><span>🔍</span><input id="fSpq" type="search" placeholder="${t('spSearch')}" value="${esc(S.spq)}"></label>`;
+    h+=`<label class="mini srch"><span>🔍</span><input id="fSpq" type="search" placeholder="${t('spSearch')}" value="${esc(S.spq)}"></label>`;
+    h+=`<label class="mini"><span>${t('lFam')}</span><select id="fFam">${opt("",t('allFam')+" ("+fams.length+")",S.fam)+fams.map(f=>opt(f,famLab(f),S.fam)).join("")}</select></label>`;
+    h+=`<label class="mini"><span>${t('lGen')}</span><select id="fGen">${opt("",t('allGen'),S.gen)+gens.map(g=>opt(g,genLab(g),S.gen)).join("")}</select></label>`;
     h+=`<label class="mini"><span>${t('lSp')}</span><select id="fSp">${opt("",t('allSp')+(q?` (${sps.length})`:""),S.sp)+sps.map(x=>opt(x,spDisp(x),S.sp)).join("")}</select></label>`;
+  }
+  if(SUBJ_OF("ind")){
+    const list=inScope().slice().sort((a,b)=>a.seq-b.seq);
+    h+=`<label class="mini"><span>${t('lInd')}</span><select id="fInd">${opt("",t('pickInd')+" ("+list.length+")",S.ind)+list.map(i=>opt(i.uid,i.uid+" · "+indName(i),S.ind)).join("")}</select></label>`;
   }
   if(SUBJ_OF("form")){
     const ks=uniq(base.map(i=>formKey(i.form)));
@@ -426,10 +439,6 @@ function subjectBar(){
     h+=`<label class="mini"><span>${t('lCons')}</span><select id="fCons">`+cats.map(([val,key])=>{const n=val?cb.filter(i=>consMatch(i,val)).length:0;return opt(val,t(key)+(val?` (${n})`:""),S.cons);}).join("")+`</select></label>`;
   }
   if(SUBJ_OF("endemic"))h+=`<label class="mini"><input type="checkbox" id="fEnd" ${S.endemic?"checked":""} style="width:14px;accent-color:var(--accent)"> ${t('onlyEndemic')}</label>`;
-  if(SUBJ_OF("ind")){
-    const list=inScope().slice().sort((a,b)=>a.seq-b.seq);
-    h+=`<label class="mini"><span>${t('lInd')}</span><select id="fInd">${opt("",t('pickInd')+" ("+list.length+")",S.ind)+list.map(i=>opt(i.uid,i.uid+" · "+indName(i),S.ind)).join("")}</select></label>`;
-  }
   if(v.disp.length)h+=`<span class="gearwrap"><button class="gear" id="gearBtn">${t('gear')}</button><div class="pop" id="pop" style="display:none">${displayPop()}</div></span>`;
   return `<div class="subj">${h}</div>`;
 }
@@ -459,7 +468,16 @@ function wireCard(){
   on("fEnd","onchange",e=>{S.endemic=e.target.checked;render();});
   on("fInd","onchange",e=>{S.ind=e.target.value;render();});
   const q=document.getElementById("fSpq");
-  if(q)q.oninput=e=>{S.spq=e.target.value;S.sp="";render();const n=document.getElementById("fSpq");if(n){n.focus();n.setSelectionRange(n.value.length,n.value.length);}};
+  if(q){
+    // 注音等輸入法組字期間不重繪：重繪會換掉 input 元素，候選字窗隨之消失而無法選字。
+    // 組字結束（compositionend）後才套用；Chrome 與 Firefox 事件順序不同，以值比對避免重複重繪。
+    let composing=false;
+    const apply=v=>{if(v===S.spq)return;S.spq=v;S.sp="";render();
+      const n=document.getElementById("fSpq");if(n){n.focus();n.setSelectionRange(n.value.length,n.value.length);}};
+    q.addEventListener("compositionstart",()=>{composing=true;});
+    q.addEventListener("compositionend",e=>{composing=false;apply(e.target.value);});
+    q.oninput=e=>{if(composing||e.isComposing)return;apply(e.target.value);};
+  }
   on("gearBtn","onclick",()=>{const p=document.getElementById("pop");p.style.display=p.style.display==="none"?"block":"none";});
   document.querySelectorAll("#dThr button").forEach(b=>b.onclick=()=>{S.thr=Number(b.dataset.v);render();});
   document.querySelectorAll("#dDen button").forEach(b=>b.onclick=()=>{S.denom=b.dataset.v;render();});
@@ -969,8 +987,8 @@ function treeAutoOpen(inds){
 function viewTree(){
   const inds=inScope();
   treeAutoOpen(inds);
-  const head=`<div class="card panel"><h2>${t('tabTree')}</h2>
-    <div class="desc">${t('treeDesc')}</div>
+  const head=`<div class="card panel"><div class="chead"><div><h2>${t('tabTree')}</h2>
+    <div class="desc">${t('treeDesc')}</div></div><div class="sp"></div>${subjectBar()}</div>
     <div class="seg" style="max-width:260px;margin-bottom:12px">
       <button onclick="window._treeAll(1)">${t('treeExpand')}</button>
       <button onclick="window._treeAll(0)">${t('treeCollapse')}</button>

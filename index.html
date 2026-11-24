@@ -409,18 +409,21 @@ function subjectBar(){
   const base=inScopeBase();
   // 排列順序：搜尋物種 → 科 → 屬 → 種 → 個體 → 形相 → 保育 → 特有。
   if(SUBJ_OF("tax")){
-    // 科選單依物種數降冪排序，同數比個體數，再按名稱。
-    const famT=new Map();
-    base.forEach(i=>{if(!i.fam)return;let e=famT.get(i.fam);if(!e){e={n:0,sp:new Set()};famT.set(i.fam,e);}e.n++;if(i.species)e.sp.add(i.species);});
-    const fams=[...famT.keys()].sort((a,b)=>famT.get(b).sp.size-famT.get(a).sp.size||famT.get(b).n-famT.get(a).n||a.localeCompare(b,"zh-Hant"));
-    const famLab=f=>{const e=famT.get(f);return (EN()?(FAMS[f]||f):f)+(EN()?` (${e.sp.size} spp)`:`（${e.sp.size} 種）`);};
-    const gb=base.filter(i=>!S.fam||i.fam===S.fam), gens=uniq(gb.map(i=>i.gen));
+    // 科、屬選單依物種數降冪排序，同數比個體數，再按名稱；選項標「n 種」。
+    const tally=(inds,key)=>{const m=new Map();
+      inds.forEach(i=>{const k=i[key];if(!k)return;let e=m.get(k);if(!e){e={n:0,sp:new Set()};m.set(k,e);}e.n++;if(i.species)e.sp.add(i.species);});
+      return m;};
+    const bySp=m=>[...m.keys()].sort((a,b)=>m.get(b).sp.size-m.get(a).sp.size||m.get(b).n-m.get(a).n||a.localeCompare(b,"zh-Hant"));
+    const spLab=(m,k,en)=>{const e=m.get(k);return (EN()?(en[k]||k):k)+(EN()?` (${e.sp.size} ${e.sp.size===1?"sp":"spp"})`:`（${e.sp.size} 種）`);};
+    const famT=tally(base,"fam"), fams=bySp(famT), famLab=f=>spLab(famT,f,FAMS);
+    const gb=base.filter(i=>!S.fam||i.fam===S.fam);
+    const genT=tally(gb,"gen"), gens=bySp(genT), genLab=g=>spLab(genT,g,GENS);
     const sb=gb.filter(i=>!S.gen||i.gen===S.gen); let sps=uniq(sb.map(i=>i.species));
     const q=(S.spq||"").trim().toLowerCase();
     if(q)sps=sps.filter(x=>x.toLowerCase().includes(q)||String(SPS[x]||"").toLowerCase().includes(q));
     h+=`<label class="mini srch"><span>🔍</span><input id="fSpq" type="search" placeholder="${t('spSearch')}" value="${esc(S.spq)}"></label>`;
     h+=`<label class="mini"><span>${t('lFam')}</span><select id="fFam">${opt("",t('allFam')+" ("+fams.length+")",S.fam)+fams.map(f=>opt(f,famLab(f),S.fam)).join("")}</select></label>`;
-    h+=`<label class="mini"><span>${t('lGen')}</span><select id="fGen">${opt("",t('allGen'),S.gen)+gens.map(g=>opt(g,EN()?(GENS[g]||g):g,S.gen)).join("")}</select></label>`;
+    h+=`<label class="mini"><span>${t('lGen')}</span><select id="fGen">${opt("",t('allGen'),S.gen)+gens.map(g=>opt(g,genLab(g),S.gen)).join("")}</select></label>`;
     h+=`<label class="mini"><span>${t('lSp')}</span><select id="fSp">${opt("",t('allSp')+(q?` (${sps.length})`:""),S.sp)+sps.map(x=>opt(x,spDisp(x),S.sp)).join("")}</select></label>`;
   }
   if(SUBJ_OF("ind")){

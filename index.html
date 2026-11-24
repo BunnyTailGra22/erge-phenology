@@ -138,6 +138,7 @@ table.tbl td{padding:7px 8px;border-bottom:1px solid #efece2;vertical-align:top}
 table.tbl td.n{text-align:right;font-variant-numeric:tabular-nums}
 footer{padding:14px 24px 28px;color:var(--muted);font-size:11.5px;border-top:1px solid var(--line);background:#fff;line-height:1.7}
 .pill{display:inline-block;border:1px solid var(--line);border-radius:20px;padding:2px 9px;margin-right:6px;font-size:11px}
+a.pill{color:inherit;text-decoration:none}a.pill:hover{border-color:var(--accent);color:var(--accent)}
 @media (max-width:760px){
   header{padding:14px 14px 0}header h1{font-size:19px}
   nav,#chips,main,footer{padding-left:14px;padding-right:14px}
@@ -266,6 +267,8 @@ function formLabel(f){const k=formKey(f);return (FORMS[k]&&FORMS[k][S.lang])||f|
 const FAMS={},GENS={},SPS={};
 D.individuals.forEach(i=>{if(i.fam)FAMS[i.fam]=i.fam_sci||i.fam;if(i.gen)GENS[i.gen]=i.gen_sci||i.gen;if(i.species)SPS[i.species]=i.sci||i.species;});
 function famDisp(i){return (EN()?(i.fam_sci||i.fam):i.fam)||"—";}
+// 資料授權：CC BY-NC 4.0（姓名標示—非商業性）。中文介面連到正體中文授權說明。
+const LICENSE_URL=()=>"https://creativecommons.org/licenses/by-nc/4.0/"+(EN()?"":"deed.zh-hant");
 function indName(i){return (EN()?(i.sci||i.name.replace(/\n/g,"／")):i.name.replace(/\n/g,"／"));}
 function spDisp(v){return EN()?(SPS[v]||v):v;}
 
@@ -950,6 +953,7 @@ ${EN()?`· Monthly resolution; onset is placed on the actual survey date, so its
     <h3 style="font-size:14px;margin:18px 0 8px">${EN()?"Sources & citation":"來源與引用"}</h3>
     <div class="note">${EN()?"Survey":"踏查"}：${EN()?"SOW Taipei Branch, Mt. Erge group interpretive volunteers":"荒野保護協會台北分會 二格山組解說志工"}　·　${EN()?"Taxonomy":"分類"}：${M.taxonomy_source}
 ${EN()?"Cite as":"引用格式"}：二格山稜線植物物候資料集 (${LAST}). v${(M.asof||"").slice(0,7)}. ${location.href.split("#")[0]}
+${EN()?"License":"授權"}：<a href="${LICENSE_URL()}" target="_blank" rel="license noopener">CC BY-NC 4.0</a>　${EN()?"— reuse with attribution, non-commercial only; contact the survey team for commercial use.":"—— 標示出處即可再利用，限非商業用途；商業用途請與踏查團隊聯繫。"}
 ${EN()?"Generated":"本頁重建於"}：${M.generated||"—"}　·　${EN()?"Data as of":"資料截止"}：${M.asof||"—"}</div>`);
 }
 
@@ -1113,7 +1117,7 @@ const VIEWFN={now:viewNow,coverage:viewCoverage,individual:viewIndividual,commun
               tree:viewTree,methods:viewMethods};
 function footHTML(){
   return `${EN()?"Survey":"物候踏查"}：${EN()?"SOW Taipei Branch · Mt. Erge group interpretive volunteers":"荒野保護協會台北分會 · 二格山組解說志工"} ｜ ${EN()?"Taxonomy":"分類資料"}：TaiCoL · iNaturalist ｜ ${EN()?"Codes":"代號對照"}：USA-NPN / PPO<br>
-   <span class="pill">CC BY 4.0</span><span class="pill">${EN()?"Data as of":"資料截止"} ${M.asof||"—"}</span><span class="pill">${EN()?"Built":"重建"} ${M.generated||"—"}</span>
+   <a class="pill" href="${LICENSE_URL()}" target="_blank" rel="license noopener" title="${EN()?"Data license":"資料授權"}">CC BY-NC 4.0</a><span class="pill">${EN()?"Data as of":"資料截止"} ${M.asof||"—"}</span><span class="pill">${EN()?"Built":"重建"} ${M.generated||"—"}</span>
    <span class="pill">${M.n_individuals} ${EN()?"individuals":"株"} · ${YEARS[0]}–${LAST}</span>`;
 }
 function render(){
